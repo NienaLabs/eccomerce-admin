@@ -3,17 +3,21 @@
 import { useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
+import { NotificationProvider } from "@/context/NotificationContext";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
   adminEmail?: string;
+  adminId?: string;
+  token?: string;
 }
 
-export function DashboardLayout({ children, adminEmail }: DashboardLayoutProps) {
+export function DashboardLayout({ children, adminEmail, adminId, token }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="h-full flex font-open-sans bg-surface-soft text-ink overflow-hidden">
+    <NotificationProvider token={token || ""} userId={adminId || ""}>
+      <div className="h-full flex font-open-sans bg-surface-soft text-ink overflow-hidden">
       {/* Mobile Overlay */}
       {sidebarOpen && (
         <div
@@ -39,5 +43,6 @@ export function DashboardLayout({ children, adminEmail }: DashboardLayoutProps) 
         </main>
       </div>
     </div>
+    </NotificationProvider>
   );
 }

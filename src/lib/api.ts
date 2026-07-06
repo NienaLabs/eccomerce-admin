@@ -158,3 +158,26 @@ export async function fetchList<T>(path: string, token?: string): Promise<T[]> {
   const data = await fetchJson<unknown>(path, token, []);
   return Array.isArray(data) ? (data as T[]) : [];
 }
+
+export interface NotificationResponse {
+  id: string;
+  user_id: string;
+  title: string;
+  body: string;
+  type?: string;
+  action_url?: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export async function fetchNotifications(token: string): Promise<NotificationResponse[]> {
+  const res = await apiFetch("/notifications/", token);
+  if (!res.ok) throw new Error("Failed to fetch notifications");
+  return res.json();
+}
+
+export async function markNotificationRead(token: string, notificationId: string): Promise<NotificationResponse> {
+  const res = await apiFetch(`/notifications/${notificationId}/read`, token, { method: "PATCH" });
+  if (!res.ok) throw new Error("Failed to mark notification read");
+  return res.json();
+}

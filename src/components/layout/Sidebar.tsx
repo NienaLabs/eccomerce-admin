@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Store, Users, Megaphone, LifeBuoy, ShieldAlert, X, ClipboardCheck, Settings, Activity } from "lucide-react";
+import { LayoutDashboard, Store, Users, Megaphone, LifeBuoy, ShieldAlert, X, ClipboardCheck, Settings, Activity, Banknote } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navigation = [
@@ -10,6 +10,7 @@ const navigation = [
   { name: "System Health & Audit", href: "/health", icon: Activity },
   { name: "Global App Settings", href: "/settings", icon: Settings },
   { name: "Push Notifications", href: "/broadcasts", icon: Megaphone },
+  { name: "Commissions", href: "/commissions", icon: Banknote },
   { name: "Support Tickets", href: "/tickets", icon: LifeBuoy },
   { name: "User Management", href: "/users", icon: Users },
   { name: "Vendor Management", href: "/vendors", icon: Store },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Send, Users, Store, Globe, Clock, Megaphone } from "lucide-react";
 import { API_BASE_URL, type SystemBroadcast } from "@/lib/api";
 
@@ -10,11 +10,16 @@ export function BroadcastsClient({ initialBroadcasts, token }: { initialBroadcas
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [targetAudience, setTargetAudience] = useState("all");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || !message) return;
-    
+
     if (!confirm(`Are you sure you want to send this push notification to ${targetAudience.toUpperCase()} users?`)) return;
 
     try {
@@ -28,7 +33,7 @@ export function BroadcastsClient({ initialBroadcasts, token }: { initialBroadcas
         body: JSON.stringify({ title, message, target_audience: targetAudience }),
       });
       if (!res.ok) throw new Error("Failed to send broadcast");
-      
+
       const newBroadcast = await res.json();
       setBroadcasts([newBroadcast, ...broadcasts]);
       setTitle("");
@@ -72,14 +77,14 @@ export function BroadcastsClient({ initialBroadcasts, token }: { initialBroadcas
                 className="w-full sm:w-1/2 border-surface-muted rounded-md shadow-sm focus:border-primary focus:ring-primary text-ink font-bold"
               >
                 <option value="all">Everyone (All Apps)</option>
-                <option value="users">Buyers Only</option>
+                <option value="users">Users Only</option>
                 <option value="vendors">Vendors Only</option>
               </select>
             </div>
             <div>
               <label className="block text-sm font-bold text-ink mb-1">Notification Title</label>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 required
                 maxLength={60}
                 value={title}
@@ -91,7 +96,7 @@ export function BroadcastsClient({ initialBroadcasts, token }: { initialBroadcas
             </div>
             <div>
               <label className="block text-sm font-bold text-ink mb-1">Message Body</label>
-              <textarea 
+              <textarea
                 required
                 maxLength={200}
                 rows={3}
@@ -103,7 +108,7 @@ export function BroadcastsClient({ initialBroadcasts, token }: { initialBroadcas
               <p className="text-xs text-ink-muted mt-1">{message.length}/200 characters</p>
             </div>
             <div className="pt-2">
-              <button 
+              <button
                 type="submit"
                 disabled={loading || !title || !message}
                 className="px-6 py-3 bg-primary text-surface rounded-md font-bold hover:bg-primary-dim transition-colors flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
@@ -135,7 +140,7 @@ export function BroadcastsClient({ initialBroadcasts, token }: { initialBroadcas
                 {broadcasts.length > 0 ? broadcasts.map((b) => (
                   <tr key={b.id} className="hover:bg-surface-soft/50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-soft font-mono">
-                      {new Date(b.created_at).toLocaleString()}
+                      {mounted ? new Date(b.created_at).toLocaleString() : ''}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase bg-surface-muted text-ink-soft">
