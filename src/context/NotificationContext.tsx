@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
-import { fetchNotifications, markNotificationRead, NotificationResponse, API_BASE_URL } from '@/lib/api';
+import { fetchNotifications, markNotificationRead, deleteNotification as apiDeleteNotification, clearAllNotifications as apiClearAll, NotificationResponse, API_BASE_URL } from '@/lib/api';
 
 interface NotificationContextProps {
   notifications: NotificationResponse[];
@@ -9,6 +9,8 @@ interface NotificationContextProps {
   isLoading: boolean;
   markAsRead: (id: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
+  deleteNotification: (id: string) => Promise<void>;
+  clearAll: () => Promise<void>;
   pushPermissionStatus: string;
   requestPushPermission: () => Promise<boolean>;
 }
@@ -42,9 +44,10 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode; token: 
   const connectWebSocket = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
-    // Remove http(s) and replace with ws(s)
+    // Remove http(s) and replace with ws(s). The backend authenticates the
+    // socket via ?token=, so a missing token is rejected before connect.
     const wsBaseUrl = API_BASE_URL.replace(/^http/, 'ws');
-    const wsUrl = `${wsBaseUrl}/ws/user/${userId}`;
+    const wsUrl = `${wsBaseUrl}/ws/user/${userId}?token=${encodeURIComponent(token)}`;
 
     const ws = new WebSocket(wsUrl);
 
@@ -101,7 +104,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode; token: 
     };
 
     wsRef.current = ws;
-  }, [userId]);
+  }, [userId, token]);
 
   useEffect(() => {
     if (token) {
@@ -152,13 +155,37 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode; token: 
     }
   };
 
+  const deleteNotification = async (id: string) => {
+    const prev = notifications;
+    setNotifications((cur) => cur.filter((n) => n.id !== id));
+    try {
+      await apiDeleteNotification(token, id);
+    } catch (error) {
+      console.error('Failed to delete notification', error);
+      setNotifications(prev); // revert
+    }
+  };
+
+  const clearAll = async () => {
+    const prev = notifications;
+    setNotifications([]);
+    try {
+      await apiClearAll(token);
+    } catch (error) {
+      console.error('Failed to clear notifications', error);
+      setNotifications(prev); // revert
+    }
+  };
+
   return (
-    <NotificationContext.Provider value={{ 
-      notifications, 
-      unreadCount, 
-      isLoading, 
-      markAsRead, 
+    <NotificationContext.Provider value={{
+      notifications,
+      unreadCount,
+      isLoading,
+      markAsRead,
       markAllAsRead,
+      deleteNotification,
+      clearAll,
       pushPermissionStatus: permissionStatus,
       requestPushPermission: requestPermission
     }}>

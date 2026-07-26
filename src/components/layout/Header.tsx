@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { logoutAction } from "@/app/actions/auth";
-import { Menu, Bell, LogOut } from "lucide-react";
+import { Menu, Bell, LogOut, Trash2 } from "lucide-react";
 import { useNotifications } from "@/context/NotificationContext";
+import { resolveAdminNotificationRoute, type NotificationResponse } from "@/lib/api";
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -9,8 +11,18 @@ interface HeaderProps {
 }
 
 export function Header({ onMenuClick, adminEmail }: HeaderProps) {
+  const router = useRouter();
   const [showNotifications, setShowNotifications] = useState(false);
-  const { notifications, unreadCount, isLoading, markAsRead, markAllAsRead, pushPermissionStatus, requestPushPermission } = useNotifications();
+  const { notifications, unreadCount, isLoading, markAsRead, markAllAsRead, deleteNotification, clearAll, pushPermissionStatus, requestPushPermission } = useNotifications();
+
+  const handleOpen = (notif: NotificationResponse) => {
+    if (!notif.is_read) markAsRead(notif.id);
+    const route = resolveAdminNotificationRoute(notif.action_url);
+    if (route) {
+      setShowNotifications(false);
+      router.push(route);
+    }
+  };
 
   useEffect(() => {
     if (pushPermissionStatus === 'default') {
@@ -48,16 +60,26 @@ export function Header({ onMenuClick, adminEmail }: HeaderProps) {
 
           {showNotifications && (
             <div className="absolute right-0 mt-2 w-80 sm:w-96 origin-top-right rounded-lg bg-surface shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-50 flex flex-col max-h-[80vh]">
-              <div className="px-4 py-3 border-b border-surface-muted flex justify-between items-center">
+              <div className="px-4 py-3 border-b border-surface-muted flex justify-between items-center gap-3">
                 <h3 className="text-sm font-semibold text-ink">Notifications</h3>
-                {unreadCount > 0 && (
-                  <button 
-                    onClick={markAllAsRead}
-                    className="text-xs text-primary hover:text-primary-dark font-medium"
-                  >
-                    Mark all read
-                  </button>
-                )}
+                <div className="flex items-center gap-3">
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={markAllAsRead}
+                      className="text-xs text-primary hover:text-primary-dark font-medium"
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                  {notifications.length > 0 && (
+                    <button
+                      onClick={clearAll}
+                      className="text-xs text-error hover:opacity-80 font-medium"
+                    >
+                      Clear all
+                    </button>
+                  )}
+                </div>
               </div>
               
               <div className="overflow-y-auto flex-1 p-2 space-y-1">
@@ -82,10 +104,10 @@ export function Header({ onMenuClick, adminEmail }: HeaderProps) {
                   <div className="text-center py-8 text-ink-muted text-sm">No notifications</div>
                 ) : (
                   notifications.map((notif) => (
-                    <div 
+                    <div
                       key={notif.id}
-                      onClick={() => !notif.is_read && markAsRead(notif.id)}
-                      className={`p-3 rounded-md cursor-pointer transition-colors ${
+                      onClick={() => handleOpen(notif)}
+                      className={`group p-3 rounded-md cursor-pointer transition-colors ${
                         notif.is_read ? 'bg-transparent hover:bg-surface-soft' : 'bg-primary/5 hover:bg-primary/10'
                       }`}
                     >
@@ -93,9 +115,18 @@ export function Header({ onMenuClick, adminEmail }: HeaderProps) {
                         <p className={`text-sm ${notif.is_read ? 'text-ink-soft' : 'text-ink font-medium'}`}>
                           {notif.title}
                         </p>
-                        {!notif.is_read && (
-                          <span className="flex-shrink-0 h-2 w-2 rounded-full bg-primary mt-1.5" />
-                        )}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {!notif.is_read && (
+                            <span className="h-2 w-2 rounded-full bg-primary mt-1.5" />
+                          )}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); deleteNotification(notif.id); }}
+                            title="Delete notification"
+                            className="text-ink-ghost hover:text-error opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
                       <p className="text-xs text-ink-muted mt-1 line-clamp-2">{notif.body}</p>
                       <p className="text-[10px] text-ink-ghost mt-2">

@@ -42,9 +42,18 @@ export async function loginAction(_prevState: LoginState, formData: FormData): P
 
     const session = (await res.json()) as LoginResponse;
     const token = session.token ?? session.access_token;
-    
+
     if (!token) {
       return { error: "Login failed: No token received from server." };
+    }
+
+    // Only admins may hold an admin session cookie. Verify the role
+    // BEFORE setting the cookie — otherwise any customer account gets
+    // a session on the admin site.
+    const meRes = await apiFetch("/auth/me", token);
+    const me = meRes.ok ? ((await meRes.json()) as { role?: string }) : null;
+    if (!me || me.role !== "admin") {
+      return { error: "This account does not have administrator access." };
     }
 
     // Set the cookie securely
@@ -67,6 +76,18 @@ export async function loginAction(_prevState: LoginState, formData: FormData): P
 
 export async function logoutAction() {
   const cookieStore = await cookies();
+  const token = cookieStore.get("admin_token")?.value;
+
+  // Revoke the session server-side so the token can't be replayed
+  // after logout. Best-effort: clearing the cookie must never fail.
+  if (token) {
+    try {
+      await apiFetch("/auth/logout", token, { method: "POST" });
+    } catch {
+      // ignore — cookie removal below still logs the browser out
+    }
+  }
+
   cookieStore.delete("admin_token");
   redirect("/login");
 }

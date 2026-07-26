@@ -60,7 +60,7 @@ export function usePushNotificationsSetup(token: string | undefined) {
       });
 
       if (currentToken) {
-        const res = await fetch(`${API_BASE_URL}/auth/register-fcm-token`, {
+        const res = await fetch(`${API_BASE_URL}/users/me/fcm-token`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ token: currentToken }),

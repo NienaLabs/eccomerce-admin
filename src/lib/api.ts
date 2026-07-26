@@ -16,6 +16,8 @@ export type Vendor = {
   store_name?: string | null;
   is_verified?: boolean;
   created_at?: string;
+  cancellation_count?: number;
+  flagged_for_cancellations?: boolean;
 };
 
 export type KYCDocument = {
@@ -180,4 +182,28 @@ export async function markNotificationRead(token: string, notificationId: string
   const res = await apiFetch(`/notifications/${notificationId}/read`, token, { method: "PATCH" });
   if (!res.ok) throw new Error("Failed to mark notification read");
   return res.json();
+}
+
+export async function deleteNotification(token: string, notificationId: string): Promise<void> {
+  const res = await apiFetch(`/notifications/${notificationId}`, token, { method: "DELETE" });
+  if (!res.ok && res.status !== 204) throw new Error("Failed to delete notification");
+}
+
+export async function clearAllNotifications(token: string): Promise<void> {
+  const res = await apiFetch(`/notifications/clear-all`, token, { method: "DELETE" });
+  if (!res.ok && res.status !== 204) throw new Error("Failed to clear notifications");
+}
+
+/**
+ * Maps a backend notification `action_url` to a real admin route.
+ * Backend links point at app-style paths; the admin dashboard has its own.
+ */
+export function resolveAdminNotificationRoute(actionUrl?: string): string | null {
+  if (!actionUrl) return null;
+  // Vendor-flag notifications already point at /vendors?flagged=...
+  if (actionUrl.startsWith("/vendors")) return actionUrl;
+  // Order-related notifications → the vendor/orders views the admin has.
+  if (actionUrl.includes("/orders")) return "/vendors";
+  if (actionUrl.startsWith("/tickets")) return "/tickets";
+  return null;
 }

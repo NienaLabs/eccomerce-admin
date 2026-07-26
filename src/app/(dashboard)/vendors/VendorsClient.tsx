@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Store, Eye, Search, Filter, Ban, Trash2 } from "lucide-react";
+import { Store, Eye, Search, Filter, Ban, Trash2, AlertTriangle } from "lucide-react";
 import { type Vendor, API_BASE_URL } from "@/lib/api";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 export function VendorsClient({ initialVendors, token }: { initialVendors: Vendor[]; token: string }) {
   const [vendors, setVendors] = useState<Vendor[]>(initialVendors);
@@ -11,6 +11,9 @@ export function VendorsClient({ initialVendors, token }: { initialVendors: Vendo
   const [statusFilter, setStatusFilter] = useState("all");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  // A flagged-vendor notification links here as /vendors?flagged=<id> so we can
+  // highlight the offending store the moment the admin clicks the bell.
+  const flaggedId = useSearchParams().get("flagged");
 
   const handleRevoke = async (vendorId: string) => {
     if (!confirm("Are you sure you want to revoke this vendor's verification? They will lose access to the vendor app until re-approved.")) return;
@@ -55,9 +58,10 @@ export function VendorsClient({ initialVendors, token }: { initialVendors: Vendo
     const matchesSearch =
       vendor.store_name?.toLowerCase().includes(q) ||
       vendor.owner_id?.toLowerCase().includes(q);
-    const matchesStatus = statusFilter === "all" || 
-                          (statusFilter === "verified" && vendor.is_verified) || 
-                          (statusFilter === "unverified" && !vendor.is_verified);
+    const matchesStatus = statusFilter === "all" ||
+                          (statusFilter === "verified" && vendor.is_verified) ||
+                          (statusFilter === "unverified" && !vendor.is_verified) ||
+                          (statusFilter === "flagged" && vendor.flagged_for_cancellations);
     return matchesSearch && matchesStatus;
   });
 
@@ -93,6 +97,7 @@ export function VendorsClient({ initialVendors, token }: { initialVendors: Vendo
             <option value="all">All Statuses</option>
             <option value="verified">Verified</option>
             <option value="unverified">Unverified</option>
+            <option value="flagged">Flagged (cancellations)</option>
           </select>
         </div>
       </div>
@@ -110,7 +115,16 @@ export function VendorsClient({ initialVendors, token }: { initialVendors: Vendo
             </thead>
             <tbody className="bg-surface divide-y divide-surface-muted">
               {filteredVendors.length > 0 ? filteredVendors.map((vendor) => (
-                <tr key={vendor.id} className="hover:bg-surface-soft/50 transition-colors">
+                <tr
+                  key={vendor.id}
+                  className={`transition-colors ${
+                    flaggedId && vendor.id === flaggedId
+                      ? "bg-error-ghost/60"
+                      : vendor.flagged_for_cancellations
+                        ? "bg-warning-ghost/30 hover:bg-warning-ghost/50"
+                        : "hover:bg-surface-soft/50"
+                  }`}
+                >
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="h-10 w-10 rounded-xl bg-surface-muted flex items-center justify-center text-ink-muted border border-surface-deep">
@@ -130,9 +144,20 @@ export function VendorsClient({ initialVendors, token }: { initialVendors: Vendo
                     {vendor.owner_id}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-bold uppercase ${vendor.is_verified ? 'bg-success-ghost text-success' : 'bg-warning-ghost text-warning'}`}>
-                      {vendor.is_verified ? 'Verified' : 'Unverified'}
-                    </span>
+                    <div className="flex flex-col gap-1.5 items-start">
+                      <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-bold uppercase ${vendor.is_verified ? 'bg-success-ghost text-success' : 'bg-warning-ghost text-warning'}`}>
+                        {vendor.is_verified ? 'Verified' : 'Unverified'}
+                      </span>
+                      {vendor.flagged_for_cancellations && (
+                        <span
+                          title="This vendor has cancelled several orders. Consider revoking or banning."
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-error-ghost text-error"
+                        >
+                          <AlertTriangle className="w-3 h-3" />
+                          {vendor.cancellation_count ?? 0} cancellations
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium flex justify-end gap-3">
                     <a href={`${process.env.NEXT_PUBLIC_STOREFRONT_URL ?? "http://localhost:8081"}/vendor/${vendor.id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-info hover:text-info/80 font-bold">
