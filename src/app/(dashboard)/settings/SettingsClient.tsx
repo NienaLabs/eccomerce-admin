@@ -9,6 +9,7 @@ export function SettingsClient({ initialSettings, token }: { initialSettings: Sy
   const [loading, setLoading] = useState(false);
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [errorKey, setErrorKey] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Local state for text/number inputs before saving
   const [formValues, setFormValues] = useState<Record<string, string>>(() => {
@@ -24,9 +25,12 @@ export function SettingsClient({ initialSettings, token }: { initialSettings: Sy
     setTimeout(() => setSavedKey(null), 2500);
   };
 
-  const showError = (key: string) => {
+  // The backend rejects out-of-range values (e.g. a commission of 500%), and the
+  // admin needs to see *why*, not just that it failed.
+  const showError = (key: string, message?: string) => {
     setErrorKey(key);
-    setTimeout(() => setErrorKey(null), 3000);
+    setErrorMessage(message ?? null);
+    setTimeout(() => { setErrorKey(null); setErrorMessage(null); }, 5000);
   };
 
   const handleToggle = async (key: string) => {
@@ -72,8 +76,13 @@ export function SettingsClient({ initialSettings, token }: { initialSettings: Sy
         },
         body: JSON.stringify({ value: newValue }),
       });
-      if (!res.ok) throw new Error("Failed to update setting");
-      
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null);
+        const message = typeof detail?.detail === "string" ? detail.detail : undefined;
+        showError(key, message);
+        return;
+      }
+
       const updated = await res.json();
       setSettings(settings.map(s => s.key === key ? updated : s));
       showSaved(key);
@@ -122,7 +131,7 @@ export function SettingsClient({ initialSettings, token }: { initialSettings: Sy
         )}
         {errorKey === key && (
           <div className="flex items-center text-xs text-error font-bold">
-            Failed to save. Please try again.
+            {errorMessage ?? "Failed to save. Please try again."}
           </div>
         )}
       </div>
@@ -172,7 +181,7 @@ export function SettingsClient({ initialSettings, token }: { initialSettings: Sy
         )}
         {errorKey === key && (
           <div className="flex items-center text-xs text-error font-bold">
-            Failed to save. Please try again.
+            {errorMessage ?? "Failed to save. Please try again."}
           </div>
         )}
       </div>
@@ -203,6 +212,7 @@ export function SettingsClient({ initialSettings, token }: { initialSettings: Sy
         <h2 className="text-xl font-bold font-inter border-b border-surface-muted pb-2 mt-8">Global Variables</h2>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {renderInput("platform_commission", "Platform Commission (%)", <Percent className="w-6 h-6" />)}
+          {renderInput("commission_payment_due_days", "Commission Payment Window (days)", <Percent className="w-6 h-6" />)}
           {renderInput("min_app_version", "Minimum App Version", <Smartphone className="w-6 h-6" />)}
         </div>
       </div>
