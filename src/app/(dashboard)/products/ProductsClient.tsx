@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { Package, Eye, Edit3, Trash2, Tag, ShieldCheck, Search, Filter } from "lucide-react";
-import { API_BASE_URL, type AdminProduct } from "@/lib/api";
+import { clientApi, type AdminProduct } from "@/lib/api";
 
-export function ProductsClient({ initialProducts, token }: { initialProducts: AdminProduct[]; token: string }) {
+export function ProductsClient({ initialProducts }: { initialProducts: AdminProduct[] }) {
   const [products, setProducts] = useState<AdminProduct[]>(initialProducts);
   const [loading, setLoading] = useState(false);
   const [editingProduct, setEditingProduct] = useState<AdminProduct | null>(null);
@@ -16,11 +16,10 @@ export function ProductsClient({ initialProducts, token }: { initialProducts: Ad
   const handleToggleActive = async (product: AdminProduct) => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/admin/products/${product.id}`, {
+      const res = await clientApi(`/admin/products/${product.id}`, {
         method: "PATCH",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({ is_active: !product.is_active }),
       });
@@ -38,11 +37,10 @@ export function ProductsClient({ initialProducts, token }: { initialProducts: Ad
   const handleToggleFeatured = async (product: AdminProduct) => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/admin/products/${product.id}`, {
+      const res = await clientApi(`/admin/products/${product.id}`, {
         method: "PATCH",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({ is_featured: !product.is_featured }),
       });
@@ -63,11 +61,10 @@ export function ProductsClient({ initialProducts, token }: { initialProducts: Ad
     try {
       setLoading(true);
       const overrideVal = priceOverride ? parseFloat(priceOverride) : null;
-      const res = await fetch(`${API_BASE_URL}/admin/products/${editingProduct.id}`, {
+      const res = await clientApi(`/admin/products/${editingProduct.id}`, {
         method: "PATCH",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({ admin_price_override: overrideVal }),
       });
@@ -87,10 +84,9 @@ export function ProductsClient({ initialProducts, token }: { initialProducts: Ad
     if (!confirm("Are you sure you want to permanently delete this product?")) return;
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/admin/products/${productId}`, {
+      const res = await clientApi(`/admin/products/${productId}`, {
         method: "DELETE",
-        headers: { "Authorization": `Bearer ${token}` },
-      });
+              });
       if (res.ok) {
         setProducts(products.filter(p => p.id !== productId));
       } else alert("Failed to delete product.");

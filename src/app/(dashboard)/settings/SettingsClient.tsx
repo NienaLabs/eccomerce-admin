@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { Settings, ShieldAlert, Smartphone, Percent, ToggleLeft, ToggleRight, Save, CheckCircle2 } from "lucide-react";
-import { API_BASE_URL, type SystemSetting } from "@/lib/api";
+import { clientApi, type SystemSetting } from "@/lib/api";
 
-export function SettingsClient({ initialSettings, token }: { initialSettings: SystemSetting[]; token: string }) {
+export function SettingsClient({ initialSettings }: { initialSettings: SystemSetting[] }) {
   const [settings, setSettings] = useState<SystemSetting[]>(initialSettings);
   const [loading, setLoading] = useState(false);
   const [savedKey, setSavedKey] = useState<string | null>(null);
@@ -41,11 +41,10 @@ export function SettingsClient({ initialSettings, token }: { initialSettings: Sy
     
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/admin/settings/${key}`, {
+      const res = await clientApi(`/admin/settings/${key}`, {
         method: "PATCH",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({ value: newValue }),
       });
@@ -68,11 +67,10 @@ export function SettingsClient({ initialSettings, token }: { initialSettings: Sy
 
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/admin/settings/${key}`, {
+      const res = await clientApi(`/admin/settings/${key}`, {
         method: "PATCH",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({ value: newValue }),
       });

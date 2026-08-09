@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { Send, Users, Store, Globe, Clock, Megaphone } from "lucide-react";
-import { API_BASE_URL, type SystemBroadcast } from "@/lib/api";
+import { clientApi, type SystemBroadcast } from "@/lib/api";
 
-export function BroadcastsClient({ initialBroadcasts, token }: { initialBroadcasts: SystemBroadcast[]; token: string }) {
+export function BroadcastsClient({ initialBroadcasts }: { initialBroadcasts: SystemBroadcast[] }) {
   const [broadcasts, setBroadcasts] = useState<SystemBroadcast[]>(initialBroadcasts);
   const [loading, setLoading] = useState(false);
   const [title, setTitle] = useState("");
@@ -24,12 +24,8 @@ export function BroadcastsClient({ initialBroadcasts, token }: { initialBroadcas
 
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/admin/broadcasts`, {
+      const res = await clientApi(`/admin/broadcasts`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
         body: JSON.stringify({ title, message, target_audience: targetAudience }),
       });
       if (!res.ok) throw new Error("Failed to send broadcast");

@@ -42,5 +42,5 @@ export default async function CommissionsPage() {
     getGlobalCommissionRate(token),
   ]);
 
-  return <CommissionsClient initialData={commissions} initialGlobalRate={globalRate} token={token} />;
+  return <CommissionsClient initialData={commissions} initialGlobalRate={globalRate} />;
 }

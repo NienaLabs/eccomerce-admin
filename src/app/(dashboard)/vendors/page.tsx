@@ -10,5 +10,5 @@ export default async function VendorsPage() {
   const cookieStore = await cookies();
   const token = cookieStore.get("admin_token")?.value || "";
   const vendors = await getVendors(token);
-  return <VendorsClient initialVendors={vendors} token={token} />;
+  return <VendorsClient initialVendors={vendors} />;
 }

@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { Store, Eye, Search, Filter, Ban, Trash2, AlertTriangle } from "lucide-react";
-import { type Vendor, API_BASE_URL } from "@/lib/api";
+import { type Vendor, clientApi } from "@/lib/api";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export function VendorsClient({ initialVendors, token }: { initialVendors: Vendor[]; token: string }) {
+export function VendorsClient({ initialVendors }: { initialVendors: Vendor[] }) {
   const [vendors, setVendors] = useState<Vendor[]>(initialVendors);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -19,9 +19,8 @@ export function VendorsClient({ initialVendors, token }: { initialVendors: Vendo
     if (!confirm("Are you sure you want to revoke this vendor's verification? They will lose access to the vendor app until re-approved.")) return;
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/admin/vendors/${vendorId}/revoke`, {
+      const res = await clientApi(`/admin/vendors/${vendorId}/revoke`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${token}` },
       });
       if (res.ok) {
         setVendors(vendors.map(v => v.id === vendorId ? { ...v, is_verified: false } : v));
@@ -38,9 +37,8 @@ export function VendorsClient({ initialVendors, token }: { initialVendors: Vendo
     if (!confirm("Are you sure you want to permanently delete this vendor and all their products?")) return;
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/admin/vendors/${vendorId}`, {
+      const res = await clientApi(`/admin/vendors/${vendorId}`, {
         method: "DELETE",
-        headers: { "Authorization": `Bearer ${token}` },
       });
       if (res.ok) {
         setVendors(vendors.filter(v => v.id !== vendorId));

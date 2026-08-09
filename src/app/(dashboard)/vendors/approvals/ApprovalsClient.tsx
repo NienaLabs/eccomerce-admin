@@ -4,9 +4,9 @@
 import { useState } from "react";
 import { X, Eye, FileText, AlertCircle, Search, Filter } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { API_BASE_URL, type VendorApplication } from "@/lib/api";
+import { clientApi, type VendorApplication } from "@/lib/api";
 
-export function ApprovalsClient({ initialApps, token }: { initialApps: VendorApplication[]; token: string }) {
+export function ApprovalsClient({ initialApps }: { initialApps: VendorApplication[] }) {
   const router = useRouter();
   const [apps, setApps] = useState<VendorApplication[]>(initialApps);
   const [loading, setLoading] = useState(false);
@@ -18,12 +18,8 @@ export function ApprovalsClient({ initialApps, token }: { initialApps: VendorApp
   const handleReview = async (appId: string, status: "approved" | "rejected") => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/admin/vendors/applications/${appId}/review`, {
+      const res = await clientApi(`/admin/vendors/applications/${appId}/review`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
         body: JSON.stringify({ status, admin_notes: adminNotes })
       });
       if (res.ok) {

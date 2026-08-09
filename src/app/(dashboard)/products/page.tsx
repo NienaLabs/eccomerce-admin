@@ -19,7 +19,7 @@ export default async function ProductsPage() {
 
   return (
     <div className="max-w-7xl mx-auto">
-      <ProductsClient initialProducts={products} token={token} />
+      <ProductsClient initialProducts={products} />
     </div>
   );
 }

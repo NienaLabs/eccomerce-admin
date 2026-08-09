@@ -2,14 +2,19 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Store, Users, Megaphone, LifeBuoy, ShieldAlert, X, ClipboardCheck, Settings, Activity, Banknote } from "lucide-react";
+import { LayoutDashboard, Store, Users, Megaphone, LifeBuoy, ShieldAlert, X, ClipboardCheck, Settings, Activity, Banknote, Images, Package, Tag, Star, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navigation = [
   { name: "Overview", href: "/", icon: LayoutDashboard },
+  { name: "Products", href: "/products", icon: Package },
+  { name: "Product Categories", href: "/products/categories", icon: Tag },
+  { name: "Featured Listings", href: "/products/featured", icon: Star },
+  { name: "Low Stock Alerts", href: "/products/inventory", icon: AlertTriangle },
   { name: "System Health & Audit", href: "/health", icon: Activity },
   { name: "Global App Settings", href: "/settings", icon: Settings },
   { name: "Push Notifications", href: "/broadcasts", icon: Megaphone },
+  { name: "Hero Banners", href: "/hero-banners", icon: Images },
   { name: "Commissions", href: "/commissions", icon: Banknote },
   { name: "Support Tickets", href: "/tickets", icon: LifeBuoy },
   { name: "User Management", href: "/users", icon: Users },

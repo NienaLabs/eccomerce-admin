@@ -52,5 +52,5 @@ export default async function ProtectedDashboardLayout({
     );
   }
 
-  return <DashboardLayout adminEmail={user.email} adminId={user.id} token={token}>{children}</DashboardLayout>;
+  return <DashboardLayout adminEmail={user.email} adminId={user.id}>{children}</DashboardLayout>;
 }

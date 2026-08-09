@@ -17,5 +17,5 @@ export default async function TicketsPage() {
 
   const tickets = await getTickets(token);
 
-  return <TicketsClient initialTickets={tickets} token={token} />;
+  return <TicketsClient initialTickets={tickets} />;
 }

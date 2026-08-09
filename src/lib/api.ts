@@ -134,6 +134,17 @@ export interface SupportTicket {
   messages: TicketMessage[];
 }
 
+export type HeroBanner = {
+  id: string;
+  title?: string | null;
+  subtitle?: string | null;
+  image_url: string;
+  link_url?: string | null;
+  display_order: number;
+  is_active: boolean;
+  created_at: string;
+};
+
 export async function apiFetch(path: string, token?: string, init?: RequestInit) {
   return fetch(`${API_BASE_URL}${path}`, {
     ...init,
@@ -143,6 +154,23 @@ export async function apiFetch(path: string, token?: string, init?: RequestInit)
       ...init?.headers,
     },
     cache: init?.cache ?? "no-store",
+  });
+}
+
+/**
+ * Browser-safe API call for client components. Routes through the same-origin
+ * `/api/backend` proxy, which injects the admin bearer token from the httpOnly
+ * cookie on the server. The token is never exposed to client JS — client
+ * components must use this instead of hitting API_BASE_URL with a token prop.
+ */
+export async function clientApi(path: string, init?: RequestInit) {
+  return fetch(`/api/backend${path}`, {
+    ...init,
+    headers: {
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...init?.headers,
+    },
+    cache: "no-store",
   });
 }
 

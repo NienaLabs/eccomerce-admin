@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { FolderTree, Plus, Trash2, X } from "lucide-react";
-import { API_BASE_URL } from "@/lib/api";
+import { clientApi } from "@/lib/api";
 import type { Category } from "./page";
 
-export function CategoriesClient({ initialCategories, token }: { initialCategories: Category[]; token: string }) {
+export function CategoriesClient({ initialCategories }: { initialCategories: Category[] }) {
   const [categories, setCategories] = useState<Category[]>(initialCategories);
   const [loading, setLoading] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
@@ -27,11 +27,10 @@ export function CategoriesClient({ initialCategories, token }: { initialCategori
     
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/categories/`, {
+      const res = await clientApi(`/categories/`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({ 
           name: newName, 
@@ -58,12 +57,9 @@ export function CategoriesClient({ initialCategories, token }: { initialCategori
     
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/categories/${id}`, {
+      const res = await clientApi(`/categories/${id}`, {
         method: "DELETE",
-        headers: {
-          "Authorization": `Bearer ${token}`
-        }
-      });
+              });
       if (!res.ok) throw new Error("Failed to delete category");
       
       setCategories(categories.filter(c => c.id !== id));

@@ -28,7 +28,7 @@ export default async function CategoriesPage() {
 
   return (
     <div className="max-w-7xl mx-auto">
-      <CategoriesClient initialCategories={categories} token={token} />
+      <CategoriesClient initialCategories={categories} />
     </div>
   );
 }

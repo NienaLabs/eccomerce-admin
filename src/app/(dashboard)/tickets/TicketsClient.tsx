@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { CheckCircle, MessageSquare, Search, Filter } from "lucide-react";
-import { API_BASE_URL, type SupportTicket } from "@/lib/api";
+import { clientApi, type SupportTicket } from "@/lib/api";
 
-export function TicketsClient({ initialTickets, token }: { initialTickets: SupportTicket[]; token: string }) {
+export function TicketsClient({ initialTickets }: { initialTickets: SupportTicket[] }) {
   const [tickets, setTickets] = useState<SupportTicket[]>(initialTickets);
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
   const [replyText, setReplyText] = useState("");
@@ -18,11 +18,10 @@ export function TicketsClient({ initialTickets, token }: { initialTickets: Suppo
     
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/admin/tickets/${selectedTicket.id}/reply`, {
+      const res = await clientApi(`/admin/tickets/${selectedTicket.id}/reply`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({ text: replyText }),
       });
@@ -47,12 +46,9 @@ export function TicketsClient({ initialTickets, token }: { initialTickets: Suppo
     
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/admin/tickets/${selectedTicket.id}/close`, {
+      const res = await clientApi(`/admin/tickets/${selectedTicket.id}/close`, {
         method: "POST",
-        headers: {
-          "Authorization": `Bearer ${token}`
-        },
-      });
+              });
       
       if (res.ok) {
         const updatedTicket = await res.json();

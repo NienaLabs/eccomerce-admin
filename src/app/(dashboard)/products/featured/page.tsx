@@ -29,7 +29,7 @@ export default async function FeaturedProductsPage() {
           Review all currently featured products across the marketplace.
         </p>
       </div>
-      <ProductsClient initialProducts={featuredProducts} token={token} />
+      <ProductsClient initialProducts={featuredProducts} />
     </div>
   );
 }

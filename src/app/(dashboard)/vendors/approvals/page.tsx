@@ -18,7 +18,7 @@ export default async function ApprovalsPage() {
   const apps = await getApplications(token);
   return (
     <div className="max-w-7xl mx-auto">
-      <ApprovalsClient initialApps={apps} token={token} />
+      <ApprovalsClient initialApps={apps} />
     </div>
   );
 }

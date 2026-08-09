@@ -6,7 +6,7 @@ import {
   ChevronDown, ChevronUp, Store, Package, XCircle,
   ReceiptText, Filter, Search, RefreshCw, Percent, RotateCcw
 } from "lucide-react";
-import { API_BASE_URL } from "@/lib/api";
+import { clientApi } from "@/lib/api";
 
 interface CommissionEntry {
   id: string;
@@ -52,7 +52,7 @@ const STATUS_COLORS: Record<string, string> = {
 const GHS = (n: number) =>
   `GH₵ ${Math.abs(n).toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export function CommissionsClient({ initialData, initialGlobalRate, token }: { initialData: VendorSummary[]; initialGlobalRate: number; token: string }) {
+export function CommissionsClient({ initialData, initialGlobalRate }: { initialData: VendorSummary[]; initialGlobalRate: number }) {
   const [data, setData] = useState<VendorSummary[]>(initialData);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -78,9 +78,8 @@ export function CommissionsClient({ initialData, initialGlobalRate, token }: { i
       if (statusFilter !== "all") params.set("status_filter", statusFilter);
       if (dateFrom) params.set("date_from", dateFrom);
       if (dateTo) params.set("date_to", dateTo);
-      const res = await fetch(`${API_BASE_URL}/admin/commissions?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await clientApi(`/admin/commissions?${params}`, {
+              });
       if (res.ok) setData(await res.json());
     } finally {
       setLoading(false);
@@ -91,10 +90,9 @@ export function CommissionsClient({ initialData, initialGlobalRate, token }: { i
     if (!confirm("Run daily aggregation to group all new delivered orders into single commission entries per vendor?")) return;
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/commissions/aggregate`, {
+      const res = await clientApi(`/admin/commissions/aggregate`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` }
-      });
+              });
       if (res.ok) {
         const data = await res.json();
         alert(data.message || "Aggregation completed successfully.");
@@ -117,9 +115,9 @@ export function CommissionsClient({ initialData, initialGlobalRate, token }: { i
 
     setActionLoading(vendor.vendor_id);
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/commissions/bill`, {
+      const res = await clientApi(`/admin/commissions/bill`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           vendor_id: vendor.vendor_id,
           entry_ids: pendingEntries.map(e => e.id),
@@ -144,9 +142,9 @@ export function CommissionsClient({ initialData, initialGlobalRate, token }: { i
     if (!payModal) return;
     setActionLoading(payModal.vendorId);
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/commissions/mark-paid`, {
+      const res = await clientApi(`/admin/commissions/mark-paid`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           entry_ids: payModal.entryIds,
           payment_method: payMethod,
@@ -171,9 +169,9 @@ export function CommissionsClient({ initialData, initialGlobalRate, token }: { i
 
     setActionLoading(vendorId + "-rate");
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/commissions/vendors/${vendorId}/rate`, {
+      const res = await clientApi(`/admin/commissions/vendors/${vendorId}/rate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rate, reason: "Set from the admin commissions page" }),
       });
       if (res.ok) {
@@ -192,10 +190,9 @@ export function CommissionsClient({ initialData, initialGlobalRate, token }: { i
     if (!confirm(`Put ${storeName} back on the standard ${globalRate}% rate?`)) return;
     setActionLoading(vendorId + "-rate");
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/commissions/vendors/${vendorId}/rate`, {
+      const res = await clientApi(`/admin/commissions/vendors/${vendorId}/rate`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+              });
       if (res.ok) await refresh();
       else alert("Failed to reset rate");
     } finally {
@@ -214,9 +211,9 @@ export function CommissionsClient({ initialData, initialGlobalRate, token }: { i
 
     setActionLoading("global-rate");
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/settings/platform_commission`, {
+      const res = await clientApi(`/admin/settings/platform_commission`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value: String(rate) }),
       });
       if (res.ok) {

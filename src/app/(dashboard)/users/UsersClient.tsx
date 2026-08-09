@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { Search, Filter, UserCircle, Shield, Ban, CheckCircle, Plus, X, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { API_BASE_URL, type AdminUser } from "@/lib/api";
+import { clientApi, type AdminUser } from "@/lib/api";
 
-export function UsersClient({ initialUsers, token }: { initialUsers: AdminUser[]; token: string }) {
+export function UsersClient({ initialUsers }: { initialUsers: AdminUser[] }) {
   const router = useRouter();
   const [users, setUsers] = useState<AdminUser[]>(initialUsers);
   const [isAdding, setIsAdding] = useState(false);
@@ -29,11 +29,10 @@ export function UsersClient({ initialUsers, token }: { initialUsers: AdminUser[]
     if (!suspendModalUser) return;
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/admin/users/${suspendModalUser.id}/suspend`, {
+      const res = await clientApi(`/admin/users/${suspendModalUser.id}/suspend`, {
         method: "POST",
         headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}` 
+          "Content-Type": "application/json" 
         },
         body: JSON.stringify({ reason: suspendReason || "Suspended by admin", is_permanent: suspendPermanent }),
       });
@@ -57,12 +56,9 @@ export function UsersClient({ initialUsers, token }: { initialUsers: AdminUser[]
   const handleUnsuspend = async (userId: string) => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/unsuspend`, {
+      const res = await clientApi(`/admin/users/${userId}/unsuspend`, {
         method: "POST",
-        headers: { 
-          "Authorization": `Bearer ${token}` 
-        },
-      });
+              });
       
       if (res.ok) {
         setUsers(users.map(u => u.id === userId ? { ...u, is_suspended: false } : u));
@@ -81,12 +77,9 @@ export function UsersClient({ initialUsers, token }: { initialUsers: AdminUser[]
     if (!confirm("Are you sure you want to permanently delete this user? This will also delete their vendor profile and products if they have any.")) return;
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/admin/users/${userId}`, {
+      const res = await clientApi(`/admin/users/${userId}`, {
         method: "DELETE",
-        headers: { 
-          "Authorization": `Bearer ${token}` 
-        },
-      });
+              });
       
       if (res.ok) {
         setUsers(users.filter(u => u.id !== userId));
@@ -105,11 +98,10 @@ export function UsersClient({ initialUsers, token }: { initialUsers: AdminUser[]
     if (!roleModalUser) return;
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/admin/users/${roleModalUser}/role`, {
+      const res = await clientApi(`/admin/users/${roleModalUser}/role`, {
         method: "POST",
         headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({ role }),
       });
@@ -131,11 +123,10 @@ export function UsersClient({ initialUsers, token }: { initialUsers: AdminUser[]
     e.preventDefault();
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/auth/register`, {
+      const res = await clientApi(`/auth/register`, {
         method: "POST",
         headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify(newUser),
       });

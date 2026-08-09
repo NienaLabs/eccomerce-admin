@@ -10,5 +10,5 @@ export default async function UsersPage() {
   const cookieStore = await cookies();
   const token = cookieStore.get("admin_token")?.value || "";
   const users = await getUsers(token);
-  return <UsersClient initialUsers={users} token={token} />;
+  return <UsersClient initialUsers={users} />;
 }

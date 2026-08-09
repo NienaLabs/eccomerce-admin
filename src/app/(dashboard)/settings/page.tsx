@@ -19,7 +19,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="max-w-7xl mx-auto">
-      <SettingsClient initialSettings={settings} token={token} />
+      <SettingsClient initialSettings={settings} />
     </div>
   );
 }

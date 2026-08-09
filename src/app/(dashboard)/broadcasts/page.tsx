@@ -19,7 +19,7 @@ export default async function BroadcastsPage() {
 
   return (
     <div className="max-w-7xl mx-auto">
-      <BroadcastsClient initialBroadcasts={broadcasts} token={token} />
+      <BroadcastsClient initialBroadcasts={broadcasts} />
     </div>
   );
 }
