@@ -1,9 +1,16 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Admin Dashboard | Refined Electric",
   description: "Multitenant E-Commerce Admin Dashboard",
+};
+
+// Explicit mobile viewport so the responsive breakpoints actually engage on
+// phones (renders at device width instead of a zoomed-out desktop width).
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({

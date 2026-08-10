@@ -72,7 +72,7 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
 
   return (
     <div className="space-y-6">
-      <div className="mb-8 flex justify-between items-end">
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-end">
         <div>
           <h1 className="text-3xl font-bold font-inter tracking-tight text-ink flex items-center">
             <FolderTree className="w-8 h-8 mr-3 text-primary" />

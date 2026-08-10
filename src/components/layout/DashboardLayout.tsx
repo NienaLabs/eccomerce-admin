@@ -8,15 +8,13 @@ import { NotificationProvider } from "@/context/NotificationContext";
 interface DashboardLayoutProps {
   children: React.ReactNode;
   adminEmail?: string;
-  adminId?: string;
-  token?: string;
 }
 
-export function DashboardLayout({ children, adminEmail, adminId, token }: DashboardLayoutProps) {
+export function DashboardLayout({ children, adminEmail }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <NotificationProvider token={token || ""} userId={adminId || ""}>
+    <NotificationProvider>
       <div className="h-full flex font-open-sans bg-surface-soft text-ink overflow-hidden">
       {/* Mobile Overlay */}
       {sidebarOpen && (
@@ -38,7 +36,7 @@ export function DashboardLayout({ children, adminEmail, adminId, token }: Dashbo
       {/* Main Content */}
       <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
         <Header onMenuClick={() => setSidebarOpen(true)} adminEmail={adminEmail} />
-        <main className="flex-1 overflow-y-auto bg-surface-soft p-4 sm:p-6 lg:p-8">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-surface-soft p-4 sm:p-6 lg:p-8">
           {children}
         </main>
       </div>

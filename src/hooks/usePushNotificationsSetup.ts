@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getMessaging, getToken, onMessage } from 'firebase/messaging';
-import { API_BASE_URL } from '@/lib/api';
+import { clientApi } from '@/lib/api';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -19,7 +19,7 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 import { useState } from 'react';
 
-export function usePushNotificationsSetup(token: string | undefined) {
+export function usePushNotificationsSetup() {
   const isRegisteredRef = useRef(false);
   const [permissionStatus, setPermissionStatus] = useState<string>('default');
 
@@ -30,7 +30,7 @@ export function usePushNotificationsSetup(token: string | undefined) {
   }, []);
 
   const requestPermission = async () => {
-    if (!token || typeof window === 'undefined') return false;
+    if (typeof window === 'undefined') return false;
     try {
       const permission = await Notification.requestPermission();
       setPermissionStatus(permission);
@@ -45,7 +45,7 @@ export function usePushNotificationsSetup(token: string | undefined) {
   };
 
   const setupFCM = async () => {
-    if (!token || isRegisteredRef.current || typeof window === 'undefined') return;
+    if (isRegisteredRef.current || typeof window === 'undefined') return;
     try {
       if (!('serviceWorker' in navigator)) return;
       if (Notification.permission !== 'granted') return;
@@ -60,9 +60,8 @@ export function usePushNotificationsSetup(token: string | undefined) {
       });
 
       if (currentToken) {
-        const res = await fetch(`${API_BASE_URL}/users/me/fcm-token`, {
+        const res = await clientApi('/users/me/fcm-token', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ token: currentToken }),
         });
         if (res.ok) isRegisteredRef.current = true;
@@ -80,7 +79,8 @@ export function usePushNotificationsSetup(token: string | undefined) {
     if (permissionStatus === 'granted') {
       setupFCM();
     }
-  }, [token, permissionStatus]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [permissionStatus]);
 
   return { permissionStatus, requestPermission };
 }

@@ -8,9 +8,10 @@
  * inserted by hand. This is the missing control surface.
  */
 
-import { useState } from "react";
-import { Images, Plus, Trash2, Eye, EyeOff, ArrowUp, ArrowDown, ExternalLink } from "lucide-react";
+import { useState, useRef } from "react";
+import { Images, Plus, Trash2, Eye, EyeOff, ArrowUp, ArrowDown, ExternalLink, Upload, Loader2 } from "lucide-react";
 import { clientApi, type HeroBanner } from "@/lib/api";
+import { uploadImage } from "@/lib/upload";
 
 export function HeroBannersClient({
   initialBanners,
@@ -25,9 +26,27 @@ export function HeroBannersClient({
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const authHeaders = {
     "Content-Type": "application/json",
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError(null);
+    setUploading(true);
+    try {
+      const url = await uploadImage(file);
+      setImageUrl(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const sortBanners = (list: HeroBanner[]) =>
@@ -146,18 +165,49 @@ export function HeroBannersClient({
 
         <div>
           <label className="block text-sm font-medium text-ink-muted mb-1">
-            Image URL <span className="text-red-500">*</span>
+            Banner image <span className="text-red-500">*</span>
           </label>
           <input
-            value={imageUrl}
-            onChange={e => setImageUrl(e.target.value)}
-            placeholder="https://…/flash-sale.jpg"
-            className="w-full rounded-lg border border-surface-muted px-3 py-2 text-sm text-ink"
-            required
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            onChange={handleFileSelect}
+            className="hidden"
           />
-          <p className="mt-1 text-xs text-ink-muted">
-            Upload the image first, then paste its URL here. Landscape images work best (16:9).
-          </p>
+          {imageUrl ? (
+            <div className="relative w-full overflow-hidden rounded-lg border border-surface-muted">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={imageUrl} alt="Banner preview" className="h-40 w-full object-cover bg-surface-muted" />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="absolute bottom-2 right-2 rounded-lg bg-ink/80 px-3 py-1.5 text-xs font-semibold text-surface backdrop-blur hover:bg-ink"
+              >
+                {uploading ? "Uploading…" : "Replace"}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="flex h-40 w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-surface-muted bg-surface-soft text-ink-muted transition-colors hover:border-primary hover:text-primary disabled:opacity-60"
+            >
+              {uploading ? (
+                <>
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <span className="text-sm font-medium">Uploading…</span>
+                </>
+              ) : (
+                <>
+                  <Upload className="h-6 w-6" />
+                  <span className="text-sm font-medium">Click to upload an image</span>
+                  <span className="text-xs">JPG, PNG, WEBP or GIF · landscape (16:9) works best</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -194,8 +244,8 @@ export function HeroBannersClient({
 
         <button
           type="submit"
-          disabled={loading || !imageUrl.trim()}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          disabled={loading || uploading || !imageUrl.trim()}
+          className="w-full sm:w-auto rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
         >
           {loading ? "Adding…" : "Add banner"}
         </button>
@@ -215,7 +265,7 @@ export function HeroBannersClient({
           banners.map((banner, index) => (
             <div
               key={banner.id}
-              className={`flex items-center gap-4 rounded-2xl border border-surface-muted bg-surface p-4 shadow-sm ${
+              className={`flex flex-col sm:flex-row sm:items-center gap-4 rounded-2xl border border-surface-muted bg-surface p-4 shadow-sm ${
                 banner.is_active ? "" : "opacity-60"
               }`}
             >
@@ -223,7 +273,7 @@ export function HeroBannersClient({
               <img
                 src={banner.image_url}
                 alt={banner.title ?? "Hero banner"}
-                className="h-20 w-36 flex-shrink-0 rounded-lg object-cover bg-surface-muted"
+                className="h-40 w-full sm:h-20 sm:w-36 flex-shrink-0 rounded-lg object-cover bg-surface-muted"
               />
 
               <div className="min-w-0 flex-1">

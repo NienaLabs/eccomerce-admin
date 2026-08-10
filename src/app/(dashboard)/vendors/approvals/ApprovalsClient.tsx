@@ -81,7 +81,7 @@ export function ApprovalsClient({ initialApps }: { initialApps: VendorApplicatio
         </div>
       </div>
 
-      <div className="bg-surface border border-surface-muted rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-surface border border-surface-muted rounded-xl shadow-sm overflow-x-auto">
         <table className="min-w-full divide-y divide-surface-muted">
           <thead className="bg-surface-soft">
             <tr>

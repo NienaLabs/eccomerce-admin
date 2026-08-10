@@ -159,7 +159,7 @@ export function UsersClient({ initialUsers }: { initialUsers: AdminUser[] }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center mb-8">
         <div>
           <h1 className="text-3xl font-bold font-inter tracking-tight text-ink">
             User Management
