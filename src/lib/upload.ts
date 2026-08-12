@@ -40,9 +40,22 @@ export async function uploadImage(file: File): Promise<string> {
     s3Res = await fetch(presigned.url, { method: "POST", body: form });
   } catch {
     // fetch only rejects here for network/CORS failures — S3 returning 4xx
-    // still resolves. Naming that difference saves a lot of guesswork.
+    // still resolves. Which of the two it is depends entirely on WHERE the
+    // backend pointed us, so say so: a localhost:4566 target means the backend
+    // is configured for LocalStack, while a real s3.amazonaws.com target that
+    // still fails means the bucket is missing its CORS rule.
+    let host = presigned.url;
+    try {
+      host = new URL(presigned.url).host;
+    } catch {
+      /* keep the raw value if it isn't a parseable URL */
+    }
+    console.error("S3 upload could not reach storage", { url: presigned.url });
     throw new Error(
-      "Could not reach storage. This is usually a network problem or a CORS rule on the bucket."
+      `Could not reach storage at ${host}. ` +
+        (/localhost|127\.0\.0\.1|4566/.test(host)
+          ? "The backend is handing out a LocalStack address, which a browser can't reach — check USE_LOCALSTACK on the API."
+          : "The request never completed, which usually means the bucket has no CORS rule allowing this site.")
     );
   }
 
