@@ -12,6 +12,8 @@ export interface Category {
   category_enum: string;
   parent_id?: string;
   created_at: string;
+  /** How many products sit in this category — drives the delete warning. */
+  product_count?: number | null;
 }
 
 export default async function CategoriesPage() {

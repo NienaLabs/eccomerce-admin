@@ -15,12 +15,14 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
-  console.log('[firebase-messaging-sw] Received background message ', payload);
-  const title = payload.notification?.title || 'New Admin Notification';
+  // Backend sends data-only messages (title/body in `data`) so the browser
+  // doesn't auto-display AND fire this handler (which would double the banner).
+  const data = payload.data || {};
+  const title = payload.notification?.title || data.title || 'New Admin Notification';
   const options = {
-    body: payload.notification?.body || '',
-    icon: payload.notification?.image || '/favicon.ico',
-    data: payload.data,
+    body: payload.notification?.body || data.body || '',
+    icon: payload.notification?.image || data.image || '/favicon.ico',
+    data,
   };
   self.registration.showNotification(title, options);
 });

@@ -15,6 +15,7 @@ import {
   ChartNoAxesCombined,
   ReceiptText,
   Rocket,
+  Timer,
   type LucideIcon,
 } from "lucide-react";
 
@@ -126,6 +127,12 @@ export const NAV_SECTIONS: NavSection[] = [
         href: "/broadcasts",
         icon: Megaphone,
         description: "Push to everyone or specific users",
+      },
+      {
+        name: "Flash Sales",
+        href: "/flash-sales",
+        icon: Timer,
+        description: "Scheduled sales and their products",
       },
       {
         name: "Hero Banners",

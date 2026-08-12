@@ -206,6 +206,30 @@ export interface SupportTicket {
   messages: TicketMessage[];
 }
 
+export interface FlashSaleItem {
+  id: string;
+  product_id: string;
+  product_name?: string | null;
+  image_url?: string | null;
+  actual_price?: number | null;
+  discount_price?: number | null;
+  /** Sale-specific price; null means use the product's own discount. */
+  sale_price?: number | null;
+}
+
+export interface FlashSale {
+  id: string;
+  title: string;
+  subtitle?: string | null;
+  starts_at: string;
+  ends_at: string;
+  is_active: boolean;
+  created_at?: string | null;
+  items: FlashSaleItem[];
+  /** Active AND inside its window — what shoppers actually see. */
+  is_live: boolean;
+}
+
 export type HeroBanner = {
   id: string;
   title?: string | null;

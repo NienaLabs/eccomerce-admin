@@ -121,10 +121,14 @@ export function CategoriesClient({
   };
 
   const remove = async (category: Category) => {
+    const count = category.product_count ?? 0;
     const ok = await confirm({
       title: "Delete this category?",
-      message: `"${category.name}" will be removed. Products filed under it keep their listing but lose this grouping.`,
-      confirmLabel: "Delete category",
+      message:
+        count > 0
+          ? `"${category.name}" still has ${count} product${count === 1 ? "" : "s"} filed under it. They keep their listings but lose this grouping, and shoppers will no longer find them by browsing this category.`
+          : `"${category.name}" is empty, so nothing will be unfiled. This can't be undone.`,
+      confirmLabel: count > 0 ? `Delete anyway (${count} product${count === 1 ? "" : "s"})` : "Delete category",
       destructive: true,
     });
     if (!ok) return;
@@ -192,6 +196,18 @@ export function CategoriesClient({
             ),
           },
           {
+            header: "Products",
+            cell: (category) => (
+              <span
+                className={`font-inter text-sm font-semibold ${
+                  (category.product_count ?? 0) > 0 ? "text-ink" : "text-ink-muted"
+                }`}
+              >
+                {category.product_count ?? "—"}
+              </span>
+            ),
+          },
+          {
             header: "Actions",
             align: "right",
             cell: (category) => (
@@ -223,7 +239,13 @@ export function CategoriesClient({
                   /{category.slug}
                 </p>
               </div>
-              <Badge tone="neutral">{formatEnum(category.category_enum)}</Badge>
+              <div className="flex flex-shrink-0 flex-col items-end gap-1">
+                <Badge tone="neutral">{formatEnum(category.category_enum)}</Badge>
+                <span className="font-open-sans text-xs text-ink-muted">
+                  {category.product_count ?? 0} product
+                  {(category.product_count ?? 0) === 1 ? "" : "s"}
+                </span>
+              </div>
             </div>
             <CardActions>
               <Button
