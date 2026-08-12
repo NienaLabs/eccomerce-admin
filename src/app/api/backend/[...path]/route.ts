@@ -36,6 +36,18 @@ async function forward(req: NextRequest, path: string[]) {
   });
 
   // Pass the backend response straight through.
+  //
+  // 204/205/304 are "null body status" codes: the Response constructor throws
+  // `TypeError: Invalid response status code 204` if you hand it a body at all,
+  // and an empty ArrayBuffer still counts as a body. That turned every DELETE
+  // the backend answers with 204 into a 500 from this proxy — which is why
+  // deleting a hero banner, deleting a category, and clearing notifications all
+  // silently failed from the admin.
+  const NULL_BODY_STATUSES = new Set([204, 205, 304]);
+  if (NULL_BODY_STATUSES.has(res.status)) {
+    return new NextResponse(null, { status: res.status });
+  }
+
   const body = await res.arrayBuffer();
   const resHeaders = new Headers();
   const resContentType = res.headers.get("content-type");

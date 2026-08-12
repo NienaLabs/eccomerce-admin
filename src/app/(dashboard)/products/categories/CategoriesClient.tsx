@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Tag, Plus, Trash2 } from "lucide-react";
+import { Tag, Plus, Trash2, Pencil } from "lucide-react";
 import { clientApi } from "@/lib/api";
 import type { Category } from "./page";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -44,49 +44,77 @@ export function CategoriesClient({
 
   const [categories, setCategories] = useState<Category[]>(initialCategories);
   const [loading, setLoading] = useState(false);
-  const [adding, setAdding] = useState(false);
+  // `null` = closed, "new" = creating, a Category = editing that one.
+  const [editing, setEditing] = useState<Category | "new" | null>(null);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [categoryEnum, setCategoryEnum] = useState("other");
+  // Editing an existing slug changes storefront URLs, so it's opt-in rather
+  // than silently regenerated from the name the way it is when creating.
+  const [slugTouched, setSlugTouched] = useState(false);
 
-  const reset = () => {
+  const isEdit = editing !== null && editing !== "new";
+
+  const openCreate = () => {
     setName("");
     setSlug("");
     setCategoryEnum("other");
+    setSlugTouched(false);
+    setEditing("new");
   };
 
-  const create = async () => {
+  const openEdit = (category: Category) => {
+    setName(category.name);
+    setSlug(category.slug);
+    setCategoryEnum(category.category_enum);
+    setSlugTouched(true);
+    setEditing(category);
+  };
+
+  const save = async () => {
     if (!name.trim() || !slug.trim()) {
       toast("A name and slug are both required.", "warning");
       return;
     }
 
+    const payload = {
+      name: name.trim(),
+      slug: slug.trim(),
+      category_enum: categoryEnum,
+    };
+
     setLoading(true);
     try {
-      const res = await clientApi(`/categories/`, {
-        method: "POST",
+      const target = isEdit ? `/categories/${(editing as Category).id}` : `/categories/`;
+      const res = await clientApi(target, {
+        method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          slug: slug.trim(),
-          category_enum: categoryEnum,
-        }),
+        body: JSON.stringify(payload),
       });
+
       if (!res.ok) {
         const detail = await res.json().catch(() => null);
         toast(
-          typeof detail?.detail === "string" ? detail.detail : "Could not create it.",
+          typeof detail?.detail === "string"
+            ? detail.detail
+            : isEdit
+              ? "Could not save the changes."
+              : "Could not create it.",
           "error"
         );
         return;
       }
-      const created: Category = await res.json();
-      setCategories([...categories, created]);
-      setAdding(false);
-      reset();
-      toast(`"${created.name}" added.`, "success");
+
+      const saved: Category = await res.json();
+      setCategories((current) =>
+        isEdit
+          ? current.map((c) => (c.id === saved.id ? saved : c))
+          : [...current, saved]
+      );
+      setEditing(null);
+      toast(isEdit ? `"${saved.name}" updated.` : `"${saved.name}" added.`, "success");
     } catch {
-      toast("Network error — the category was not created.", "error");
+      toast("Network error — nothing was saved.", "error");
     } finally {
       setLoading(false);
     }
@@ -121,7 +149,7 @@ export function CategoriesClient({
         icon={<Tag className="h-6 w-6 text-ink-muted sm:h-7 sm:w-7" />}
         description="The category structure shoppers browse by."
         action={
-          <Button onClick={() => setAdding(true)} icon={<Plus className="h-4 w-4" />}>
+          <Button onClick={openCreate} icon={<Plus className="h-4 w-4" />}>
             Add category
           </Button>
         }
@@ -136,7 +164,7 @@ export function CategoriesClient({
             title="No categories yet"
             message="Add one so shoppers have something to browse by."
             action={
-              <Button onClick={() => setAdding(true)} icon={<Plus className="h-4 w-4" />}>
+              <Button onClick={openCreate} icon={<Plus className="h-4 w-4" />}>
                 Add category
               </Button>
             }
@@ -167,13 +195,22 @@ export function CategoriesClient({
             header: "Actions",
             align: "right",
             cell: (category) => (
-              <IconButton
-                label={`Delete ${category.name}`}
-                tone="danger"
-                disabled={loading}
-                onClick={() => remove(category)}
-                icon={<Trash2 className="h-4 w-4" />}
-              />
+              <div className="flex justify-end gap-1">
+                <IconButton
+                  label={`Edit ${category.name}`}
+                  tone="primary"
+                  disabled={loading}
+                  onClick={() => openEdit(category)}
+                  icon={<Pencil className="h-4 w-4" />}
+                />
+                <IconButton
+                  label={`Delete ${category.name}`}
+                  tone="danger"
+                  disabled={loading}
+                  onClick={() => remove(category)}
+                  icon={<Trash2 className="h-4 w-4" />}
+                />
+              </div>
             ),
           },
         ]}
@@ -193,6 +230,15 @@ export function CategoriesClient({
                 variant="ghost"
                 size="sm"
                 disabled={loading}
+                onClick={() => openEdit(category)}
+                icon={<Pencil className="h-4 w-4" />}
+              >
+                Edit
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={loading}
                 onClick={() => remove(category)}
                 icon={<Trash2 className="h-4 w-4" />}
                 className="text-error hover:bg-error-ghost"
@@ -205,22 +251,27 @@ export function CategoriesClient({
       />
 
       <Sheet
-        open={adding}
-        onClose={() => setAdding(false)}
-        title="Add category"
+        open={editing !== null}
+        onClose={() => setEditing(null)}
+        title={isEdit ? "Edit category" : "Add category"}
+        description={isEdit ? (editing as Category).name : undefined}
         size="sm"
         footer={
           <>
             <Button
               variant="secondary"
-              onClick={() => setAdding(false)}
+              onClick={() => setEditing(null)}
               className="sm:w-auto"
               block
             >
               Cancel
             </Button>
-            <Button onClick={create} disabled={loading} className="sm:w-auto" block>
-              {loading ? "Creating…" : "Create category"}
+            <Button onClick={save} disabled={loading} className="sm:w-auto" block>
+              {loading
+                ? "Saving…"
+                : isEdit
+                  ? "Save changes"
+                  : "Create category"}
             </Button>
           </>
         }
@@ -231,16 +282,29 @@ export function CategoriesClient({
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
-                setSlug(slugify(e.target.value));
+                // Only auto-derive the slug while the admin hasn't taken it
+                // over — silently rewriting an existing slug would break every
+                // storefront link pointing at this category.
+                if (!slugTouched) setSlug(slugify(e.target.value));
               }}
               placeholder="e.g. Smart Watches"
             />
           </Field>
 
-          <Field label="Slug" hint="Used in the storefront URL.">
+          <Field
+            label="Slug"
+            hint={
+              isEdit
+                ? "Changing this breaks existing links to the category."
+                : "Used in the storefront URL."
+            }
+          >
             <TextInput
               value={slug}
-              onChange={(e) => setSlug(e.target.value)}
+              onChange={(e) => {
+                setSlugTouched(true);
+                setSlug(e.target.value);
+              }}
               placeholder="smart-watches"
               className="font-mono"
             />
