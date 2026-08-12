@@ -1,199 +1,345 @@
-
 "use client";
 
 import { useState } from "react";
-import { X, Eye, FileText, AlertCircle, Search, Filter } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { Eye, FileText, AlertCircle, ClipboardCheck, ExternalLink } from "lucide-react";
 import { clientApi, type VendorApplication } from "@/lib/api";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Badge } from "@/components/ui/Badge";
+import { Button, IconButton } from "@/components/ui/Button";
+import { Sheet } from "@/components/ui/Sheet";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterBar, SearchInput, Select, Field, TextArea } from "@/components/ui/Filters";
+import { DataView, DataCard, CardField, CardActions } from "@/components/ui/DataView";
+import { useFeedback } from "@/components/ui/Feedback";
+import { formatDate } from "@/lib/utils";
+
+const STATUS_OPTIONS = [
+  { value: "all", label: "All statuses" },
+  { value: "pending", label: "Pending" },
+  { value: "approved", label: "Approved" },
+  { value: "rejected", label: "Rejected" },
+];
+
+const STATUS_TONE = {
+  approved: "success",
+  rejected: "error",
+  pending: "warning",
+} as const;
 
 export function ApprovalsClient({ initialApps }: { initialApps: VendorApplication[] }) {
   const router = useRouter();
+  const { toast, confirm } = useFeedback();
+
   const [apps, setApps] = useState<VendorApplication[]>(initialApps);
   const [loading, setLoading] = useState(false);
-  const [selectedApp, setSelectedApp] = useState<VendorApplication | null>(null);
-  const [adminNotes, setAdminNotes] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [selected, setSelected] = useState<VendorApplication | null>(null);
+  const [notes, setNotes] = useState("");
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("all");
 
-  const handleReview = async (appId: string, status: "approved" | "rejected") => {
+  const review = async (app: VendorApplication, decision: "approved" | "rejected") => {
+    const ok = await confirm({
+      title: decision === "approved" ? "Approve this vendor?" : "Reject this application?",
+      message:
+        decision === "approved"
+          ? `${app.business_name} gets a verified storefront and immediate access to the vendor app.`
+          : `${app.business_name} is turned down. Your notes are shared with the applicant, so make the reason clear.`,
+      confirmLabel: decision === "approved" ? "Approve vendor" : "Reject application",
+      destructive: decision === "rejected",
+    });
+    if (!ok) return;
+
+    setLoading(true);
     try {
-      setLoading(true);
-      const res = await clientApi(`/admin/vendors/applications/${appId}/review`, {
+      const res = await clientApi(`/admin/vendors/applications/${app.id}/review`, {
         method: "POST",
-        body: JSON.stringify({ status, admin_notes: adminNotes })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: decision, admin_notes: notes }),
       });
-      if (res.ok) {
-        const updatedApp = await res.json();
-        setApps(apps.map(a => a.id === appId ? updatedApp : a));
-        setSelectedApp(null);
-        setAdminNotes("");
-        router.refresh();
-      } else {
-        alert("Failed to review application.");
-      }
+      if (!res.ok) throw new Error("Failed");
+      const updated: VendorApplication = await res.json();
+      setApps((current) => current.map((a) => (a.id === app.id ? updated : a)));
+      setSelected(null);
+      setNotes("");
+      toast(
+        decision === "approved"
+          ? `${app.business_name} approved.`
+          : `${app.business_name} rejected.`,
+        decision === "approved" ? "success" : "warning"
+      );
+      router.refresh();
     } catch {
-      alert("Network Error.");
+      toast("Could not submit that review.", "error");
     } finally {
       setLoading(false);
     }
   };
 
-  const filteredApps = apps.filter(app => {
-    const matchesSearch = app.business_name?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === "all" || app.status === statusFilter;
+  const filtered = apps.filter((app) => {
+    const matchesSearch = app.business_name
+      ?.toLowerCase()
+      .includes(search.toLowerCase());
+    const matchesStatus = status === "all" || app.status === status;
     return matchesSearch && matchesStatus;
   });
 
+  const pendingCount = apps.filter((a) => a.status === "pending").length;
+
   return (
-    <div className="space-y-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold font-inter tracking-tight text-ink">
-          Vendor Approvals
-        </h1>
-        <p className="text-ink-soft mt-1">
-          Review new vendor applications and verify KYC documents.
-        </p>
-      </div>
+    <div className="space-y-5 sm:space-y-6">
+      <PageHeader
+        title="Approvals"
+        icon={<ClipboardCheck className="h-6 w-6 text-ink-muted sm:h-7 sm:w-7" />}
+        description={
+          pendingCount > 0
+            ? `${pendingCount} application${pendingCount === 1 ? "" : "s"} waiting on you.`
+            : "New vendor applications and their KYC documents."
+        }
+      />
 
-      <div className="bg-surface border border-surface-muted rounded-xl p-4 flex flex-col sm:flex-row gap-4 items-center">
-        <div className="relative flex-1 w-full">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-ink-ghost" />
-          <input
-            type="text"
-            placeholder="Search by business name..."
-            className="w-full pl-10 pr-4 py-2 bg-surface-soft border border-surface-muted rounded-lg focus:outline-none focus:border-primary text-ink"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+      <FilterBar>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search by business name…"
+        />
+        <Select value={status} onChange={setStatus} options={STATUS_OPTIONS} label="Status" />
+      </FilterBar>
+
+      <DataView
+        items={filtered}
+        keyOf={(app) => app.id}
+        empty={
+          <EmptyState
+            icon={<ClipboardCheck className="h-10 w-10" />}
+            title="Nothing to review"
+            message="New vendor applications will appear here as they come in."
           />
-        </div>
-        <div className="relative w-full sm:w-48">
-          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-ghost" />
-          <select
-            className="w-full pl-9 pr-4 py-2 bg-surface-soft border border-surface-muted rounded-lg focus:outline-none focus:border-primary text-ink appearance-none"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+        }
+        columns={[
+          {
+            header: "Business",
+            cell: (app) => (
+              <div className="min-w-0">
+                <p className="font-inter text-sm font-semibold text-ink">
+                  {app.business_name}
+                </p>
+                <p className="font-mono text-xs text-ink-muted">
+                  Reg: {app.business_registration_number || "N/A"}
+                </p>
+              </div>
+            ),
+          },
+          {
+            header: "Documents",
+            hideBelow: "lg",
+            cell: (app) => (
+              <Badge tone={app.documents.length > 0 ? "neutral" : "error"}>
+                {app.documents.length > 0 ? `${app.documents.length} files` : "None"}
+              </Badge>
+            ),
+          },
+          {
+            header: "Status",
+            cell: (app) => (
+              <Badge tone={STATUS_TONE[app.status] ?? "neutral"}>{app.status}</Badge>
+            ),
+          },
+          {
+            header: "Applied",
+            cell: (app) => (
+              <span className="whitespace-nowrap font-open-sans text-sm text-ink-soft">
+                {formatDate(app.applied_at)}
+              </span>
+            ),
+          },
+          {
+            header: "Actions",
+            align: "right",
+            cell: (app) => (
+              <IconButton
+                label={`Review ${app.business_name}`}
+                tone="primary"
+                onClick={() => {
+                  setSelected(app);
+                  setNotes("");
+                }}
+                icon={<Eye className="h-4 w-4" />}
+              />
+            ),
+          },
+        ]}
+        card={(app) => (
+          <DataCard
+            accent={
+              app.status === "pending"
+                ? "warning"
+                : app.status === "approved"
+                  ? "success"
+                  : "error"
+            }
           >
-            <option value="all">All Statuses</option>
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-          </select>
-        </div>
-      </div>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-inter text-sm font-semibold text-ink">
+                  {app.business_name}
+                </p>
+                <p className="mt-0.5 truncate font-mono text-xs text-ink-muted">
+                  Reg: {app.business_registration_number || "N/A"}
+                </p>
+              </div>
+              <Badge tone={STATUS_TONE[app.status] ?? "neutral"}>{app.status}</Badge>
+            </div>
 
-      <div className="bg-surface border border-surface-muted rounded-xl shadow-sm overflow-x-auto">
-        <table className="min-w-full divide-y divide-surface-muted">
-          <thead className="bg-surface-soft">
-            <tr>
-              <th className="px-6 py-4 text-left text-xs font-bold text-ink-muted uppercase tracking-wider font-inter">Business</th>
-              <th className="px-6 py-4 text-left text-xs font-bold text-ink-muted uppercase tracking-wider font-inter">Status</th>
-              <th className="px-6 py-4 text-left text-xs font-bold text-ink-muted uppercase tracking-wider font-inter">Applied</th>
-              <th className="px-6 py-4 text-right text-xs font-bold text-ink-muted uppercase tracking-wider font-inter">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="bg-surface divide-y divide-surface-muted">
-            {filteredApps.length === 0 && (
-              <tr><td colSpan={4} className="text-center py-8 text-ink-muted">No applications found.</td></tr>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <CardField label="Applied" value={formatDate(app.applied_at)} />
+              <CardField
+                label="Documents"
+                value={
+                  app.documents.length > 0 ? (
+                    `${app.documents.length} uploaded`
+                  ) : (
+                    <span className="text-error">None provided</span>
+                  )
+                }
+              />
+            </div>
+
+            <CardActions>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSelected(app);
+                  setNotes("");
+                }}
+                icon={<Eye className="h-4 w-4" />}
+              >
+                Review application
+              </Button>
+            </CardActions>
+          </DataCard>
+        )}
+      />
+
+      <Sheet
+        open={selected !== null}
+        onClose={() => setSelected(null)}
+        title="Review application"
+        description={selected?.business_name}
+        size="lg"
+        footer={
+          selected?.status === "pending" ? (
+            <>
+              <Button
+                variant="destructive"
+                onClick={() => selected && review(selected, "rejected")}
+                disabled={loading}
+                className="sm:w-auto"
+                block
+              >
+                Reject
+              </Button>
+              <Button
+                onClick={() => selected && review(selected, "approved")}
+                disabled={loading}
+                className="sm:w-auto"
+                block
+              >
+                Approve vendor
+              </Button>
+            </>
+          ) : undefined
+        }
+      >
+        {selected && (
+          <div className="space-y-6">
+            <section>
+              <h3 className="mb-2 font-inter text-[11px] font-bold uppercase tracking-wider text-ink-muted">
+                Business details
+              </h3>
+              <div className="space-y-1 rounded-xl border border-surface-muted bg-surface-soft p-3">
+                <p className="font-inter text-base font-semibold text-ink">
+                  {selected.business_name}
+                </p>
+                <p className="font-open-sans text-sm text-ink-soft">
+                  Reg: {selected.business_registration_number || "Not provided"}
+                </p>
+                <p className="truncate font-mono text-xs text-ink-muted">
+                  User: {selected.user_id}
+                </p>
+              </div>
+            </section>
+
+            {selected.admin_notes && (
+              <section>
+                <h3 className="mb-2 font-inter text-[11px] font-bold uppercase tracking-wider text-ink-muted">
+                  Store bio
+                </h3>
+                <p className="rounded-xl border border-surface-muted bg-surface-soft p-3 font-open-sans text-sm text-ink-soft">
+                  {selected.admin_notes}
+                </p>
+              </section>
             )}
-            {filteredApps.map((app) => (
-              <tr key={app.id} className="hover:bg-surface-soft/50 transition-colors">
-                <td className="px-6 py-4">
-                  <div className="font-bold text-ink font-inter">{app.business_name}</div>
-                  <div className="text-xs text-ink-soft font-mono">Reg: {app.business_registration_number || 'N/A'}</div>
-                </td>
-                <td className="px-6 py-4">
-                  <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-bold uppercase ${app.status === 'approved' ? 'bg-success-ghost text-success' : app.status === 'rejected' ? 'bg-error-ghost text-error' : 'bg-warning-ghost text-warning'}`}>
-                    {app.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-sm text-ink-soft">
-                  {new Date(app.applied_at).toLocaleDateString()}
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <button onClick={() => setSelectedApp(app)} className="text-primary hover:text-primary-dim font-bold inline-flex items-center">
-                    <Eye className="w-4 h-4 mr-1" /> Review
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
 
-      {selectedApp && (
-        <div className="fixed inset-0 bg-ink/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-surface rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col">
-            <div className="p-6 border-b border-surface-muted flex justify-between items-center bg-surface-soft">
-              <h2 className="text-xl font-bold font-inter">Review Application</h2>
-              <button onClick={() => setSelectedApp(null)} className="text-ink-muted hover:text-ink"><X className="h-6 w-6" /></button>
-            </div>
-            <div className="p-6 space-y-6">
-              <div>
-                <h3 className="text-sm font-bold text-ink-muted uppercase">Business Details</h3>
-                <p className="font-bold text-lg mt-1">{selectedApp.business_name}</p>
-                <p className="text-ink-soft">{selectedApp.business_registration_number}</p>
-                <p className="text-ink-soft">User ID: {selectedApp.user_id}</p>
-                {selectedApp.admin_notes && (
-                  <div className="mt-4 p-3 bg-surface-soft border border-surface-muted rounded-lg">
-                    <p className="text-sm font-bold text-ink-muted mb-1">Store Bio:</p>
-                    <p className="text-sm text-ink">{selectedApp.admin_notes}</p>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <h3 className="text-sm font-bold text-ink-muted uppercase mb-3">KYC Documents</h3>
-                {selectedApp.documents.length === 0 ? (
-                  <div className="flex items-center text-error text-sm font-bold bg-error-ghost p-3 rounded-lg">
-                    <AlertCircle className="w-4 h-4 mr-2" /> No KYC documents provided.
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-3">
-                    {selectedApp.documents.map(doc => (
-                      <div key={doc.id} className="border border-surface-muted rounded-lg p-3 flex justify-between items-center bg-surface-soft">
-                        <div className="flex items-center">
-                          <FileText className="w-5 h-5 mr-3 text-primary" />
-                          <span className="font-bold capitalize">{doc.document_type}</span>
-                        </div>
-                        <a href={doc.document_url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary font-bold hover:underline">View Document</a>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {selectedApp.status === "pending" && (
-                <div>
-                  <h3 className="text-sm font-bold text-ink-muted uppercase mb-2">Admin Notes</h3>
-                  <textarea
-                    className="w-full rounded-md border border-surface-deep bg-surface px-3 py-2 text-ink focus:border-primary focus:outline-none"
-                    rows={3}
-                    placeholder="Add reasons for rejection or internal notes..."
-                    value={adminNotes}
-                    onChange={(e) => setAdminNotes(e.target.value)}
-                  />
-                  <div className="flex gap-3 mt-4 justify-end">
-                    <button
-                      disabled={loading}
-                      onClick={() => handleReview(selectedApp.id, "rejected")}
-                      className="px-4 py-2 bg-error-ghost text-error rounded-md font-bold hover:bg-error hover:text-surface transition-colors"
-                    >
-                      Reject Application
-                    </button>
-                    <button
-                      disabled={loading}
-                      onClick={() => handleReview(selectedApp.id, "approved")}
-                      className="px-4 py-2 bg-success text-surface rounded-md font-bold hover:bg-success-dim transition-colors"
-                    >
-                      Approve Vendor
-                    </button>
-                  </div>
+            <section>
+              <h3 className="mb-2 font-inter text-[11px] font-bold uppercase tracking-wider text-ink-muted">
+                KYC documents
+              </h3>
+              {selected.documents.length === 0 ? (
+                <div className="flex items-center gap-2 rounded-xl bg-error-ghost p-3 font-open-sans text-sm font-semibold text-error">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                  No KYC documents provided.
                 </div>
+              ) : (
+                <ul className="space-y-2">
+                  {selected.documents.map((doc) => (
+                    <li key={doc.id}>
+                      <a
+                        href={doc.document_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex min-h-14 items-center justify-between gap-3 rounded-xl border border-surface-muted bg-surface-soft p-3 transition-colors hover:border-primary-border"
+                      >
+                        <span className="flex min-w-0 items-center gap-3">
+                          <FileText className="h-5 w-5 flex-shrink-0 text-ink-muted" />
+                          <span className="truncate font-inter text-sm font-semibold capitalize text-ink">
+                            {doc.document_type}
+                          </span>
+                        </span>
+                        <ExternalLink className="h-4 w-4 flex-shrink-0 text-ink-muted" />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
               )}
-            </div>
+            </section>
+
+            {selected.status === "pending" ? (
+              <Field
+                label="Admin notes"
+                hint="Shared with the applicant — give a clear reason if you reject."
+              >
+                <TextArea
+                  rows={3}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Reason for the decision, or internal notes…"
+                />
+              </Field>
+            ) : (
+              <div className="rounded-xl border border-surface-muted bg-surface-soft p-3">
+                <p className="font-open-sans text-sm text-ink-soft">
+                  This application was already{" "}
+                  <strong className="font-semibold text-ink">{selected.status}</strong>
+                  {selected.reviewed_at ? ` on ${formatDate(selected.reviewed_at)}` : ""}.
+                </p>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )}
+      </Sheet>
     </div>
   );
 }

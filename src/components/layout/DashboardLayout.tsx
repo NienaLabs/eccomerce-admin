@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
+import { BottomNav } from "./BottomNav";
+import { InstallPrompt } from "./InstallPrompt";
 import { NotificationProvider } from "@/context/NotificationContext";
+import { FeedbackProvider } from "@/components/ui/Feedback";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -11,36 +13,36 @@ interface DashboardLayoutProps {
 }
 
 export function DashboardLayout({ children, adminEmail }: DashboardLayoutProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
   return (
-    <NotificationProvider>
-      <div className="h-full flex font-open-sans bg-surface-soft text-ink overflow-hidden">
-      {/* Mobile Overlay */}
-      {sidebarOpen && (
+    <FeedbackProvider>
+      <NotificationProvider>
         <div
-          className="fixed inset-0 z-40 bg-ink/50 backdrop-blur-sm lg:hidden transition-opacity"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+          className="flex h-dvh overflow-hidden bg-surface-soft font-open-sans text-ink"
+          style={{
+            paddingLeft: "var(--safe-left)",
+            paddingRight: "var(--safe-right)",
+          }}
+        >
+          {/* Desktop only. On mobile the bottom bar is the primary navigation,
+              so there is no drawer to slide in and no overlay to dismiss. */}
+          <aside className="hidden flex-shrink-0 lg:block">
+            <Sidebar />
+          </aside>
 
-      {/* Sidebar Container */}
-      <div
-        className={`fixed inset-y-0 left-0 z-50 w-72 transform bg-surface transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 shadow-xl lg:shadow-none ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        <Sidebar onClose={() => setSidebarOpen(false)} />
-      </div>
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            <Header adminEmail={adminEmail} />
 
-      {/* Main Content */}
-      <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
-        <Header onMenuClick={() => setSidebarOpen(true)} adminEmail={adminEmail} />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-surface-soft p-4 sm:p-6 lg:p-8">
-          {children}
-        </main>
-      </div>
-    </div>
-    </NotificationProvider>
+            <main
+              className="main-scroll flex-1 overflow-y-auto overflow-x-hidden overscroll-contain p-4 sm:p-6 lg:p-8"
+            >
+              <div className="mx-auto w-full max-w-7xl">{children}</div>
+            </main>
+          </div>
+
+          <BottomNav />
+          <InstallPrompt />
+        </div>
+      </NotificationProvider>
+    </FeedbackProvider>
   );
 }

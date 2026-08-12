@@ -1,138 +1,205 @@
 "use client";
 
 import { Activity, Database, Users, Store, Package, FileText, CheckCircle2 } from "lucide-react";
-import { type DatabaseHealth, type SystemAuditLog } from "@/lib/api";
+import type { DatabaseHealth, SystemAuditLog } from "@/lib/api";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { StatCard } from "@/components/ui/StatCard";
+import { Badge } from "@/components/ui/Badge";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { DataView, DataCard, CardField } from "@/components/ui/DataView";
+import { LocaleNumber } from "@/components/ui/LocaleNumber";
+import { formatDateTime, shortId } from "@/lib/utils";
 
-export function HealthClient({ initialHealth, initialLogs }: { initialHealth: DatabaseHealth | null, initialLogs: SystemAuditLog[] }) {
-  
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString();
-  };
+/** Parse outside the render path — JSX must not be constructed inside try/catch. */
+function parseDetails(details: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(details);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Audit `details` is a JSON string; render it as readable pairs when it parses. */
+function AuditDetails({ details }: { details: string | null }) {
+  if (!details) return <span className="text-ink-muted">—</span>;
+
+  const parsed = parseDetails(details);
+  if (!parsed) {
+    return <span className="truncate font-open-sans text-xs text-ink-muted">{details}</span>;
+  }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold font-inter tracking-tight text-ink flex items-center">
-          <Activity className="w-8 h-8 mr-3 text-primary" />
-          System Health & Audit
-        </h1>
-        <p className="text-ink-soft mt-1">
-          Monitor database health and track global administrative actions.
-        </p>
-      </div>
-
-      {initialHealth && (
-        <div className="space-y-4">
-          <h2 className="text-xl font-bold font-inter flex items-center">
-            <Database className="w-5 h-5 mr-2 text-ink-muted" /> Database Metrics
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="bg-surface rounded-xl p-5 border border-surface-muted shadow-sm">
-              <div className="text-sm font-bold text-ink-muted mb-1 flex items-center">
-                <Activity className="w-4 h-4 mr-1" /> Status
-              </div>
-              <div className="text-2xl font-black text-success flex items-center">
-                <CheckCircle2 className="w-6 h-6 mr-1" /> {initialHealth.status.toUpperCase()}
-              </div>
-            </div>
-            <div className="bg-surface rounded-xl p-5 border border-surface-muted shadow-sm">
-              <div className="text-sm font-bold text-ink-muted mb-1 flex items-center">
-                <Users className="w-4 h-4 mr-1" /> Total Users
-              </div>
-              <div className="text-3xl font-black font-inter text-ink">
-                {initialHealth.total_users.toLocaleString()}
-              </div>
-            </div>
-            <div className="bg-surface rounded-xl p-5 border border-surface-muted shadow-sm">
-              <div className="text-sm font-bold text-ink-muted mb-1 flex items-center">
-                <Store className="w-4 h-4 mr-1" /> Total Vendors
-              </div>
-              <div className="text-3xl font-black font-inter text-ink">
-                {initialHealth.total_vendors.toLocaleString()}
-              </div>
-            </div>
-            <div className="bg-surface rounded-xl p-5 border border-surface-muted shadow-sm">
-              <div className="text-sm font-bold text-ink-muted mb-1 flex items-center">
-                <Package className="w-4 h-4 mr-1" /> Total Products
-              </div>
-              <div className="text-3xl font-black font-inter text-ink">
-                {initialHealth.total_products.toLocaleString()}
-              </div>
-            </div>
-            <div className="bg-surface rounded-xl p-5 border border-surface-muted shadow-sm">
-              <div className="text-sm font-bold text-ink-muted mb-1 flex items-center">
-                <Database className="w-4 h-4 mr-1" /> DB Size (MB)
-              </div>
-              <div className="text-3xl font-black font-inter text-ink">
-                {initialHealth.db_size_mb}
-              </div>
-            </div>
-          </div>
+    <div className="space-y-0.5">
+      {Object.entries(parsed).map(([key, value]) => (
+        <div key={key} className="truncate font-open-sans text-xs">
+          <span className="font-semibold text-ink-soft">{key}:</span>{" "}
+          <span className="font-mono text-ink-muted">
+            {typeof value === "object" ? JSON.stringify(value) : String(value)}
+          </span>
         </div>
+      ))}
+    </div>
+  );
+}
+
+export function HealthClient({
+  initialHealth,
+  initialLogs,
+}: {
+  initialHealth: DatabaseHealth | null;
+  initialLogs: SystemAuditLog[];
+}) {
+  return (
+    <div className="space-y-5 sm:space-y-8">
+      <PageHeader
+        title="Health & Audit"
+        icon={<Activity className="h-6 w-6 text-ink-muted sm:h-7 sm:w-7" />}
+        description="Database metrics and the trail of every administrative action."
+      />
+
+      {initialHealth ? (
+        <section className="space-y-3">
+          <h2 className="flex items-center gap-2 font-inter text-base font-bold text-ink sm:text-lg">
+            <Database className="h-4 w-4 text-ink-muted" /> Database
+          </h2>
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+            <StatCard
+              label="Status"
+              tone="success"
+              icon={<CheckCircle2 className="h-5 w-5" />}
+              value={
+                <span className="text-success">{initialHealth.status.toUpperCase()}</span>
+              }
+            />
+            <StatCard
+              label="Users"
+              icon={<Users className="h-5 w-5" />}
+              value={<LocaleNumber value={initialHealth.total_users} />}
+            />
+            <StatCard
+              label="Vendors"
+              icon={<Store className="h-5 w-5" />}
+              value={<LocaleNumber value={initialHealth.total_vendors} />}
+            />
+            <StatCard
+              label="Products"
+              icon={<Package className="h-5 w-5" />}
+              value={<LocaleNumber value={initialHealth.total_products} />}
+            />
+            <StatCard
+              label="DB size"
+              icon={<Database className="h-5 w-5" />}
+              value={`${initialHealth.db_size_mb} MB`}
+            />
+          </div>
+        </section>
+      ) : (
+        <EmptyState
+          icon={<Database className="h-10 w-10" />}
+          title="Health check unavailable"
+          message="The backend didn't return database metrics."
+        />
       )}
 
-      <div className="space-y-4">
-        <h2 className="text-xl font-bold font-inter flex items-center mt-8">
-          <FileText className="w-5 h-5 mr-2 text-ink-muted" /> Audit Trail
+      <section className="space-y-3">
+        <h2 className="flex items-center gap-2 font-inter text-base font-bold text-ink sm:text-lg">
+          <FileText className="h-4 w-4 text-ink-muted" /> Audit trail
         </h2>
-        <div className="bg-surface border border-surface-muted rounded-xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-surface-muted">
-              <thead className="bg-surface-soft">
-                <tr>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-ink-muted uppercase tracking-wider font-inter">Timestamp</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-ink-muted uppercase tracking-wider font-inter">Action</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-ink-muted uppercase tracking-wider font-inter">Target</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-ink-muted uppercase tracking-wider font-inter">Details</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-ink-muted uppercase tracking-wider font-inter">Admin ID</th>
-                </tr>
-              </thead>
-              <tbody className="bg-surface divide-y divide-surface-muted">
-                {initialLogs.length > 0 ? initialLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-surface-soft/50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-soft font-mono">
-                      {formatDate(log.created_at)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-bold uppercase bg-surface-muted text-ink-soft">
-                        {log.action}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-ink">
-                      {log.target_id || "-"}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-ink-muted max-w-xs">
-                      {(() => {
-                        if (!log.details) return "-";
-                        try {
-                          const parsed = JSON.parse(log.details);
-                          return (
-                            <div className="space-y-0.5">
-                              {Object.entries(parsed).map(([k, v]) => (
-                                <div key={k} className="truncate">
-                                  <span className="font-bold text-ink-soft">{k}:</span>{" "}
-                                  <span className="font-mono">{String(typeof v === "object" ? JSON.stringify(v) : v)}</span>
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        } catch {
-                          return <span className="truncate">{log.details}</span>;
-                        }
-                      })()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-ink-soft">
-                      {log.admin_id || "System"}
-                    </td>
-                  </tr>
-                )) : (
-                  <tr><td colSpan={5} className="px-6 py-8 text-center text-ink-muted">No audit logs found.</td></tr>
+
+        <DataView
+          items={initialLogs}
+          keyOf={(log) => log.id}
+          empty={
+            <EmptyState
+              icon={<FileText className="h-10 w-10" />}
+              title="No audit entries"
+              message="Administrative actions are recorded here as they happen."
+            />
+          }
+          columns={[
+            {
+              header: "When",
+              cell: (log) => (
+                <span className="whitespace-nowrap font-open-sans text-sm text-ink-soft">
+                  {formatDateTime(log.created_at)}
+                </span>
+              ),
+            },
+            {
+              header: "Action",
+              cell: (log) => <Badge tone="neutral">{log.action}</Badge>,
+            },
+            {
+              header: "Target",
+              hideBelow: "lg",
+              cell: (log) => (
+                <span className="font-mono text-xs text-ink">
+                  {log.target_id ? shortId(log.target_id, 14) : "—"}
+                </span>
+              ),
+            },
+            {
+              header: "Details",
+              cell: (log) => (
+                <div className="max-w-xs">
+                  <AuditDetails details={log.details} />
+                </div>
+              ),
+            },
+            {
+              header: "Admin",
+              hideBelow: "xl",
+              cell: (log) => (
+                <span className="font-mono text-xs text-ink-soft">
+                  {log.admin_id ? shortId(log.admin_id) : "System"}
+                </span>
+              ),
+            },
+          ]}
+          card={(log) => (
+            <DataCard>
+              <div className="flex items-start justify-between gap-3">
+                <Badge tone="neutral">{log.action}</Badge>
+                <span className="flex-shrink-0 font-open-sans text-xs text-ink-muted">
+                  {formatDateTime(log.created_at)}
+                </span>
+              </div>
+
+              <div className="mt-3 space-y-2">
+                <CardField
+                  label="Target"
+                  value={
+                    <span className="font-mono text-xs">
+                      {log.target_id ? shortId(log.target_id, 18) : "—"}
+                    </span>
+                  }
+                />
+                <CardField
+                  label="Admin"
+                  value={
+                    <span className="font-mono text-xs">
+                      {log.admin_id ? shortId(log.admin_id, 18) : "System"}
+                    </span>
+                  }
+                />
+                {log.details && (
+                  <div>
+                    <p className="font-inter text-[11px] font-bold uppercase tracking-wider text-ink-muted">
+                      Details
+                    </p>
+                    <div className="mt-0.5">
+                      <AuditDetails details={log.details} />
+                    </div>
+                  </div>
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+              </div>
+            </DataCard>
+          )}
+        />
+      </section>
     </div>
   );
 }

@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { API_BASE_URL } from "@/lib/api";
 import { CommissionsClient } from "./CommissionsClient";
 
+export const metadata = { title: "Commissions | AdminHub" };
+
 async function getCommissions(token: string) {
   try {
     const res = await fetch(`${API_BASE_URL}/admin/commissions`, {

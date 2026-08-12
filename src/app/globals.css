@@ -22,6 +22,23 @@
   --color-error-ghost: #d9365118;
   --color-info: #3a7ef5;
   --color-info-ghost: #3a7ef518;
+
+  /* Elevation scale — design.md §11. Warm shadows, never cool grey. */
+  --shadow-raised-1: 0 1px 4px rgba(34, 32, 34, 0.07);
+  --shadow-raised-2: 0 2px 10px rgba(34, 32, 34, 0.09);
+  --shadow-raised-3: 0 4px 16px rgba(34, 32, 34, 0.12);
+  --shadow-raised-4: 0 8px 28px rgba(34, 32, 34, 0.15);
+  --shadow-raised-5: 0 20px 60px rgba(34, 32, 34, 0.18);
+  --shadow-primary-glow: 0 4px 12px rgba(195, 216, 9, 0.30);
+
+  /* Standalone-mode insets. Zero in a browser tab, real once installed. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
+  /* design.md §4: 64px bar + the iPhone home indicator. */
+  --bottom-nav-height: 64px;
 }
 
 @theme inline {
@@ -46,6 +63,13 @@
   --color-info: var(--color-info);
   --color-info-ghost: var(--color-info-ghost);
 
+  --shadow-raised-1: var(--shadow-raised-1);
+  --shadow-raised-2: var(--shadow-raised-2);
+  --shadow-raised-3: var(--shadow-raised-3);
+  --shadow-raised-4: var(--shadow-raised-4);
+  --shadow-raised-5: var(--shadow-raised-5);
+  --shadow-primary-glow: var(--shadow-primary-glow);
+
   --font-inter: 'Inter', system-ui, sans-serif;
   --font-open-sans: 'Open Sans', system-ui, sans-serif;
 }
@@ -54,4 +78,96 @@ body {
   background-color: var(--color-surface-soft);
   color: var(--color-ink);
   font-family: 'Open Sans', system-ui, sans-serif;
+  /* A dashboard must never scroll sideways — wide content scrolls in its own
+     container instead. */
+  overflow-x: hidden;
+  overscroll-behavior-y: none;
+}
+
+/* iOS zooms the viewport when a focused input is under 16px. Ship 16px on
+   touch-primary devices and let desktop keep the denser 14px. */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* design.md §10: never remove focus outlines. */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes dialog-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.animate-sheet-up {
+  animation: sheet-up 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.animate-dialog-in {
+  animation: dialog-in 250ms ease-out;
+}
+.animate-fade-in {
+  animation: fade-in 200ms ease-out;
+}
+.animate-toast-in {
+  animation: toast-in 240ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* The scroll container has to clear the fixed bottom bar and the home
+   indicator underneath it. On desktop the bar is gone, so the reserve is too. */
+.main-scroll {
+  padding-bottom: calc(var(--bottom-nav-height) + var(--safe-bottom) + 1.5rem);
+}
+@media (min-width: 1024px) {
+  .main-scroll {
+    padding-bottom: 2rem;
+  }
+}
+
+/* design.md §6: skeletons mirror real content, shimmer 1200ms. */
+.skeleton {
+  background-image: linear-gradient(
+    90deg,
+    var(--color-surface-muted) 0%,
+    var(--color-surface-deep) 50%,
+    var(--color-surface-muted) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1200ms ease-in-out infinite;
+}
+
+/* design.md §10 — every entrance animation respects this. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

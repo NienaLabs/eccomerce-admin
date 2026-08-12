@@ -1,16 +1,40 @@
 import { cookies } from "next/headers";
-import { Users, Store, ShoppingCart, TrendingUp, Package, Star } from "lucide-react";
-import { fetchJson, fetchList, type AdminProduct, type AdminUser, type Vendor, type DatabaseHealth } from "@/lib/api";
+import Link from "next/link";
+import {
+  Users,
+  Store,
+  ShoppingCart,
+  TrendingUp,
+  Package,
+  ClipboardCheck,
+  ArrowRight,
+  Clock,
+} from "lucide-react";
+import {
+  fetchJson,
+  fetchList,
+  type AdminProduct,
+  type AdminUser,
+  type Vendor,
+  type PlatformOverview,
+} from "@/lib/api";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { StatCard } from "@/components/ui/StatCard";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { LocaleNumber } from "@/components/ui/LocaleNumber";
 
 export default async function OverviewPage() {
   const cookieStore = await cookies();
   const token = cookieStore.get("admin_token")?.value || "";
 
-  const [users, vendors, products, health] = await Promise.all([
+  // `/analytics/admin/overview` already computed every headline figure — order
+  // counts and revenue included — but this page never called it and printed a
+  // literal "—" for both instead.
+  const [overview, users, vendors, products] = await Promise.all([
+    fetchJson<PlatformOverview | null>("/analytics/admin/overview", token, null),
     fetchList<AdminUser>("/admin/users", token),
     fetchList<Vendor>("/admin/vendors", token),
     fetchList<AdminProduct>("/admin/products", token),
-    fetchJson<DatabaseHealth | null>("/admin/health", token, null),
   ]);
 
   const pendingVendors = vendors.filter((v) => !v.is_verified).length;
@@ -18,115 +42,140 @@ export default async function OverviewPage() {
   const stats = [
     {
       name: "Total Users",
-      value: health?.total_users ?? users.length,
+      value: overview?.total_users ?? users.length,
       icon: Users,
-      color: "text-info",
-      bg: "bg-info-ghost",
+      tone: "info" as const,
     },
     {
       name: "Total Vendors",
-      value: health?.total_vendors ?? vendors.length,
+      value: overview?.total_vendors ?? vendors.length,
       icon: Store,
-      color: "text-success",
-      bg: "bg-success-ghost",
+      tone: "success" as const,
     },
     {
       name: "Pending Applications",
       value: pendingVendors,
-      icon: Star,
-      color: "text-warning",
-      bg: "bg-warning-ghost",
+      icon: ClipboardCheck,
+      tone: "warning" as const,
     },
     {
       name: "Total Products",
-      value: health?.total_products ?? products.length,
+      value: overview?.total_products ?? products.length,
       icon: Package,
-      color: "text-ink-muted",
-      bg: "bg-surface-muted",
+      tone: "neutral" as const,
     },
     {
       name: "Total Orders",
-      value: "—",
+      value: overview?.total_orders ?? 0,
       icon: ShoppingCart,
-      color: "text-error",
-      bg: "bg-error-ghost",
+      tone: "error" as const,
     },
     {
       name: "Gross Revenue",
-      value: "—",
+      value: overview?.total_revenue ?? 0,
       icon: TrendingUp,
-      color: "text-ink",
-      bg: "bg-primary-ghost",
+      tone: "primary" as const,
+      currency: true,
     },
   ];
 
-  // Pull last 5 products as recent activity
   const recentProducts = products.slice(-5).reverse();
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold font-inter tracking-tight text-ink">
-          Platform Overview
-        </h1>
-        <p className="text-ink-soft mt-1 text-sm">
-          Live metrics fetched directly from your backend.
-        </p>
-      </div>
+    <div className="space-y-6 sm:space-y-8">
+      <PageHeader
+        title="Platform Overview"
+        description="Live metrics pulled straight from the backend."
+      />
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {overview && (overview.orders_today > 0 || overview.pending_orders > 0) && (
+        <div className="flex flex-col gap-3 rounded-xl border border-primary-border bg-primary-ghost p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <Clock className="mt-0.5 h-5 w-5 flex-shrink-0 text-ink" />
+            <p className="font-open-sans text-sm text-ink">
+              <strong className="font-semibold">
+                <LocaleNumber value={overview.orders_today} />
+              </strong>{" "}
+              order{overview.orders_today === 1 ? "" : "s"} today ·{" "}
+              <strong className="font-semibold">
+                <LocaleNumber value={overview.pending_orders} />
+              </strong>{" "}
+              awaiting action
+            </p>
+          </div>
+          <Link
+            href="/orders"
+            className="inline-flex min-h-11 items-center gap-1.5 font-inter text-sm font-semibold text-ink hover:underline"
+          >
+            View orders <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
         {stats.map((stat) => {
           const Icon = stat.icon;
           return (
-            <div
+            <StatCard
               key={stat.name}
-              className="overflow-hidden rounded-xl bg-surface border border-surface-muted p-5 shadow-sm flex flex-col gap-3"
-            >
-              <div className={`inline-flex items-center justify-center h-10 w-10 rounded-lg ${stat.bg}`}>
-                <Icon className={`h-5 w-5 ${stat.color}`} aria-hidden="true" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-ink-muted uppercase tracking-wider">{stat.name}</p>
-                <p className="mt-1 text-3xl font-bold font-inter text-ink">{stat.value}</p>
-              </div>
-            </div>
+              label={stat.name}
+              tone={stat.tone}
+              icon={<Icon className="h-5 w-5" aria-hidden="true" />}
+              value={
+                <LocaleNumber value={stat.value} currency={stat.currency} />
+              }
+            />
           );
         })}
       </div>
 
-      {/* Recent Products */}
-      <div className="rounded-xl bg-surface border border-surface-muted shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-surface-muted bg-surface-soft">
-          <h2 className="text-base font-bold font-inter text-ink">Recently Added Products</h2>
+      <section className="overflow-hidden rounded-xl border border-surface-muted bg-surface shadow-[var(--shadow-raised-1)]">
+        <div className="flex items-center justify-between border-b border-surface-muted bg-surface-soft px-4 py-3 sm:px-6 sm:py-4">
+          <h2 className="font-inter text-base font-bold text-ink">
+            Recently added products
+          </h2>
+          <Link
+            href="/products"
+            className="inline-flex min-h-11 items-center gap-1 font-inter text-sm font-semibold text-ink-soft hover:text-ink"
+          >
+            All <ArrowRight className="h-4 w-4" />
+          </Link>
         </div>
-        <div className="divide-y divide-surface-muted">
-          {recentProducts.length > 0 ? (
-            recentProducts.map((p) => (
-              <div key={p.id} className="flex items-center justify-between px-6 py-4 hover:bg-surface-soft/50 transition-colors">
-                <div className="flex items-center gap-4 min-w-0">
-                  <div className="h-10 w-10 flex-shrink-0 rounded-lg bg-surface-muted border border-surface-deep flex items-center justify-center text-ink-ghost">
+        {recentProducts.length > 0 ? (
+          <div className="divide-y divide-surface-muted">
+            {recentProducts.map((p) => (
+              <div
+                key={p.id}
+                className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-surface-soft/50 sm:px-6 sm:py-4"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-surface-deep bg-surface-muted text-ink-ghost">
                     <Package className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-ink font-inter truncate">{p.name || "Unnamed Product"}</p>
-                    <p className="text-xs text-ink-soft font-mono truncate">Vendor: {p.vendor_id}</p>
-                  </div>
-                </div>
-                <div className="flex-shrink-0 ml-4">
-                  <span className="text-sm font-bold text-ink font-inter">
-                    ${Number(p.actual_price ?? 0).toFixed(2)}
                   </span>
+                  <div className="min-w-0">
+                    <p className="truncate font-inter text-sm font-semibold text-ink">
+                      {p.name || "Unnamed product"}
+                    </p>
+                    <p className="truncate font-mono text-xs text-ink-muted">
+                      {p.vendor_id}
+                    </p>
+                  </div>
                 </div>
+                <span className="flex-shrink-0 font-inter text-sm font-bold text-ink">
+                  <LocaleNumber value={Number(p.actual_price ?? 0)} currency />
+                </span>
               </div>
-            ))
-          ) : (
-            <div className="px-6 py-8 text-center text-ink-muted text-sm">
-              No products found or could not reach backend.
-            </div>
-          )}
-        </div>
-      </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            icon={<Package className="h-10 w-10" />}
+            title="No products yet"
+            message="Either no vendor has listed anything, or the backend is unreachable."
+            className="border-0"
+          />
+        )}
+      </section>
     </div>
   );
 }

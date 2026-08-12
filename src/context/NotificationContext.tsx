@@ -45,9 +45,15 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   }, []);
 
   useEffect(() => {
-    loadNotifications();
-    const t = setInterval(loadNotifications, POLL_MS);
-    return () => clearInterval(t);
+    // The first load is scheduled on the timer rather than called straight from
+    // the effect body, so every state update lands in a callback from an
+    // external system (the poll) instead of cascading a synchronous re-render.
+    const initial = setTimeout(loadNotifications, 0);
+    const poll = setInterval(loadNotifications, POLL_MS);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(poll);
+    };
   }, [loadNotifications]);
 
   const markAsRead = async (id: string) => {

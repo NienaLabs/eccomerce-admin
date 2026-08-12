@@ -1,191 +1,278 @@
 "use client";
 
 import { useState } from "react";
-import { Store, Eye, Search, Filter, Ban, Trash2, AlertTriangle } from "lucide-react";
-import { type Vendor, clientApi } from "@/lib/api";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Store, Eye, Ban, Trash2, TriangleAlert } from "lucide-react";
+import { clientApi, type Vendor } from "@/lib/api";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Badge } from "@/components/ui/Badge";
+import { Button, IconButton } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterBar, SearchInput, Select } from "@/components/ui/Filters";
+import { DataView, DataCard, CardField, CardActions } from "@/components/ui/DataView";
+import { useFeedback } from "@/components/ui/Feedback";
+import { formatDate, shortId } from "@/lib/utils";
+
+const STOREFRONT =
+  process.env.NEXT_PUBLIC_STOREFRONT_URL ?? "http://localhost:8081";
+
+const STATUS_OPTIONS = [
+  { value: "all", label: "All statuses" },
+  { value: "verified", label: "Verified" },
+  { value: "unverified", label: "Unverified" },
+  { value: "flagged", label: "Flagged" },
+];
 
 export function VendorsClient({ initialVendors }: { initialVendors: Vendor[] }) {
-  const [vendors, setVendors] = useState<Vendor[]>(initialVendors);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [loading, setLoading] = useState(false);
   const router = useRouter();
-  // A flagged-vendor notification links here as /vendors?flagged=<id> so we can
-  // highlight the offending store the moment the admin clicks the bell.
+  const { toast, confirm } = useFeedback();
+
+  const [vendors, setVendors] = useState<Vendor[]>(initialVendors);
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("all");
+  const [loading, setLoading] = useState(false);
+
+  // A flagged-vendor notification links here as /vendors?flagged=<id> so the
+  // offending store is highlighted the moment the admin taps the bell.
   const flaggedId = useSearchParams().get("flagged");
 
-  const handleRevoke = async (vendorId: string) => {
-    if (!confirm("Are you sure you want to revoke this vendor's verification? They will lose access to the vendor app until re-approved.")) return;
+  const name = (vendor: Vendor) => vendor.store_name || "Unnamed store";
+
+  const revoke = async (vendor: Vendor) => {
+    const ok = await confirm({
+      title: "Revoke verification?",
+      message: `${name(vendor)} loses access to the vendor app until they're approved again. Their listings stay in the catalog.`,
+      confirmLabel: "Revoke verification",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setLoading(true);
     try {
-      setLoading(true);
-      const res = await clientApi(`/admin/vendors/${vendorId}/revoke`, {
-        method: "POST",
-      });
-      if (res.ok) {
-        setVendors(vendors.map(v => v.id === vendorId ? { ...v, is_verified: false } : v));
-        router.refresh();
-      } else alert("Failed to revoke vendor.");
+      const res = await clientApi(`/admin/vendors/${vendor.id}/revoke`, { method: "POST" });
+      if (!res.ok) throw new Error("Failed");
+      setVendors((current) =>
+        current.map((v) => (v.id === vendor.id ? { ...v, is_verified: false } : v))
+      );
+      toast(`${name(vendor)} unverified.`, "success");
+      router.refresh();
     } catch {
-      alert("Network Error: Failed to revoke vendor.");
+      toast("Could not revoke that vendor.", "error");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async (vendorId: string) => {
-    if (!confirm("Are you sure you want to permanently delete this vendor and all their products?")) return;
+  const remove = async (vendor: Vendor) => {
+    const ok = await confirm({
+      title: "Delete this vendor?",
+      message: `${name(vendor)} and every product they've listed will be deleted permanently. This cannot be undone.`,
+      confirmLabel: "Delete vendor",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setLoading(true);
     try {
-      setLoading(true);
-      const res = await clientApi(`/admin/vendors/${vendorId}`, {
-        method: "DELETE",
-      });
-      if (res.ok) {
-        setVendors(vendors.filter(v => v.id !== vendorId));
-        router.refresh();
-      } else alert("Failed to delete vendor.");
+      const res = await clientApi(`/admin/vendors/${vendor.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed");
+      setVendors((current) => current.filter((v) => v.id !== vendor.id));
+      toast("Vendor deleted.", "success");
+      router.refresh();
     } catch {
-      alert("Network Error: Failed to delete vendor.");
+      toast("Could not delete that vendor.", "error");
     } finally {
       setLoading(false);
     }
   };
 
-  const filteredVendors = vendors.filter(vendor => {
-    const q = searchQuery.toLowerCase();
+  const filtered = vendors.filter((vendor) => {
+    const query = search.toLowerCase();
     const matchesSearch =
-      vendor.store_name?.toLowerCase().includes(q) ||
-      vendor.owner_id?.toLowerCase().includes(q);
-    const matchesStatus = statusFilter === "all" ||
-                          (statusFilter === "verified" && vendor.is_verified) ||
-                          (statusFilter === "unverified" && !vendor.is_verified) ||
-                          (statusFilter === "flagged" && vendor.flagged_for_cancellations);
+      !query ||
+      vendor.store_name?.toLowerCase().includes(query) ||
+      vendor.owner_id?.toLowerCase().includes(query);
+    const matchesStatus =
+      status === "all" ||
+      (status === "verified" && vendor.is_verified) ||
+      (status === "unverified" && !vendor.is_verified) ||
+      (status === "flagged" && vendor.flagged_for_cancellations);
     return matchesSearch && matchesStatus;
   });
 
+  const statusBadges = (vendor: Vendor) => (
+    <div className="flex flex-wrap gap-1.5">
+      <Badge tone={vendor.is_verified ? "success" : "warning"}>
+        {vendor.is_verified ? "Verified" : "Unverified"}
+      </Badge>
+      {vendor.flagged_for_cancellations && (
+        <Badge tone="error" icon={<TriangleAlert className="h-3 w-3" />}>
+          {vendor.cancellation_count ?? 0} cancellations
+        </Badge>
+      )}
+    </div>
+  );
+
   return (
-    <div className="space-y-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold font-inter tracking-tight text-ink">
-          Vendor Management
-        </h1>
-        <p className="text-ink-soft mt-1">
-          View all registered vendor storefronts. Pending applications are managed in the Approvals queue.
-        </p>
-      </div>
+    <div className="space-y-5 sm:space-y-6">
+      <PageHeader
+        title="Vendors"
+        icon={<Store className="h-6 w-6 text-ink-muted sm:h-7 sm:w-7" />}
+        description="Registered storefronts. Pending applications live in Approvals."
+      />
 
-      <div className="bg-surface border border-surface-muted rounded-xl p-4 flex flex-col sm:flex-row gap-4 items-center">
-        <div className="relative flex-1 w-full">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-ink-ghost" />
-          <input
-            type="text"
-            placeholder="Search stores by name..."
-            className="w-full pl-10 pr-4 py-2 bg-surface-soft border border-surface-muted rounded-lg focus:outline-none focus:border-primary text-ink"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+      <FilterBar>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search stores by name…"
+        />
+        <Select value={status} onChange={setStatus} options={STATUS_OPTIONS} label="Status" />
+      </FilterBar>
+
+      <DataView
+        items={filtered}
+        keyOf={(vendor) => vendor.id}
+        rowClassName={(vendor) =>
+          flaggedId && vendor.id === flaggedId
+            ? "bg-error-ghost ring-1 ring-error rounded-2xl md:rounded-none md:ring-0"
+            : vendor.flagged_for_cancellations
+              ? "bg-warning-ghost/40"
+              : ""
+        }
+        empty={
+          <EmptyState
+            icon={<Store className="h-10 w-10" />}
+            title="No vendors match"
+            message="Try clearing the search or the status filter."
           />
-        </div>
-        <div className="relative w-full sm:w-48">
-          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-ghost" />
-          <select
-            className="w-full pl-9 pr-4 py-2 bg-surface-soft border border-surface-muted rounded-lg focus:outline-none focus:border-primary text-ink appearance-none"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="all">All Statuses</option>
-            <option value="verified">Verified</option>
-            <option value="unverified">Unverified</option>
-            <option value="flagged">Flagged (cancellations)</option>
-          </select>
-        </div>
-      </div>
-
-      <div className="bg-surface border border-surface-muted rounded-xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-surface-muted">
-            <thead className="bg-surface-soft">
-              <tr>
-                <th className="px-6 py-4 text-left text-xs font-bold text-ink-muted uppercase tracking-wider font-inter">Store</th>
-                <th className="px-6 py-4 text-left text-xs font-bold text-ink-muted uppercase tracking-wider font-inter">Owner ID</th>
-                <th className="px-6 py-4 text-left text-xs font-bold text-ink-muted uppercase tracking-wider font-inter">Status</th>
-                <th className="px-6 py-4 text-right text-xs font-bold text-ink-muted uppercase tracking-wider font-inter">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-surface divide-y divide-surface-muted">
-              {filteredVendors.length > 0 ? filteredVendors.map((vendor) => (
-                <tr
-                  key={vendor.id}
-                  className={`transition-colors ${
-                    flaggedId && vendor.id === flaggedId
-                      ? "bg-error-ghost/60"
-                      : vendor.flagged_for_cancellations
-                        ? "bg-warning-ghost/30 hover:bg-warning-ghost/50"
-                        : "hover:bg-surface-soft/50"
-                  }`}
+        }
+        columns={[
+          {
+            header: "Store",
+            cell: (vendor) => (
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-surface-deep bg-surface-muted text-ink-muted">
+                  <Store className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="font-inter text-sm font-semibold text-ink">
+                    {name(vendor)}
+                  </p>
+                  <p className="font-open-sans text-xs text-ink-muted">
+                    Joined {formatDate(vendor.created_at)}
+                  </p>
+                </div>
+              </div>
+            ),
+          },
+          {
+            header: "Owner",
+            hideBelow: "lg",
+            cell: (vendor) => (
+              <span className="font-mono text-xs text-ink-muted">
+                {shortId(vendor.owner_id ?? "—", 12)}
+              </span>
+            ),
+          },
+          { header: "Status", cell: statusBadges },
+          {
+            header: "Actions",
+            align: "right",
+            cell: (vendor) => (
+              <div className="flex justify-end gap-1">
+                <a
+                  href={`${STOREFRONT}/vendor/${vendor.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Open ${name(vendor)} storefront`}
+                  title="Open storefront"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-info transition-colors hover:bg-info-ghost"
                 >
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="h-10 w-10 rounded-xl bg-surface-muted flex items-center justify-center text-ink-muted border border-surface-deep">
-                        <Store className="h-5 w-5" />
-                      </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-bold text-ink font-inter">
-                          {vendor.store_name || "Unnamed Store"}
-                        </div>
-                        <div className="text-xs text-ink-soft">
-                          Joined: {vendor.created_at ? new Date(vendor.created_at).toLocaleDateString() : "Unknown"}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-muted font-mono">
-                    {vendor.owner_id}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex flex-col gap-1.5 items-start">
-                      <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-bold uppercase ${vendor.is_verified ? 'bg-success-ghost text-success' : 'bg-warning-ghost text-warning'}`}>
-                        {vendor.is_verified ? 'Verified' : 'Unverified'}
-                      </span>
-                      {vendor.flagged_for_cancellations && (
-                        <span
-                          title="This vendor has cancelled several orders. Consider revoking or banning."
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-error-ghost text-error"
-                        >
-                          <AlertTriangle className="w-3 h-3" />
-                          {vendor.cancellation_count ?? 0} cancellations
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium flex justify-end gap-3">
-                    <a href={`${process.env.NEXT_PUBLIC_STOREFRONT_URL ?? "http://localhost:8081"}/vendor/${vendor.id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-info hover:text-info/80 font-bold">
-                      <Eye className="w-4 h-4 mr-1" /> Storefront
-                    </a>
-                    {vendor.is_verified && (
-                      <button 
-                        disabled={loading}
-                        onClick={() => handleRevoke(vendor.id)} 
-                        className="inline-flex items-center text-warning hover:text-warning/80 font-bold disabled:opacity-50 ml-2"
-                      >
-                        <Ban className="w-4 h-4 mr-1"/> Revoke
-                      </button>
-                    )}
-                    <button 
-                      disabled={loading}
-                      onClick={() => handleDelete(vendor.id)} 
-                      className="inline-flex items-center text-error hover:text-error/80 font-bold disabled:opacity-50 ml-2"
-                    >
-                      <Trash2 className="w-4 h-4 mr-1"/> Delete
-                    </button>
-                  </td>
-                </tr>
-              )) : (
-                <tr><td colSpan={4} className="px-6 py-8 text-center text-ink-muted">No vendors found.</td></tr>
+                  <Eye className="h-4 w-4" />
+                </a>
+                {vendor.is_verified && (
+                  <IconButton
+                    label={`Revoke ${name(vendor)}`}
+                    tone="warning"
+                    disabled={loading}
+                    onClick={() => revoke(vendor)}
+                    icon={<Ban className="h-4 w-4" />}
+                  />
+                )}
+                <IconButton
+                  label={`Delete ${name(vendor)}`}
+                  tone="danger"
+                  disabled={loading}
+                  onClick={() => remove(vendor)}
+                  icon={<Trash2 className="h-4 w-4" />}
+                />
+              </div>
+            ),
+          },
+        ]}
+        card={(vendor) => (
+          <DataCard
+            accent={
+              vendor.flagged_for_cancellations
+                ? "error"
+                : vendor.is_verified
+                  ? "success"
+                  : "warning"
+            }
+          >
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-surface-deep bg-surface-muted text-ink-muted">
+                <Store className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-inter text-sm font-semibold text-ink">{name(vendor)}</p>
+                <p className="font-open-sans text-xs text-ink-muted">
+                  Joined {formatDate(vendor.created_at)}
+                </p>
+                <div className="mt-2">{statusBadges(vendor)}</div>
+              </div>
+            </div>
+
+            <div className="mt-3">
+              <CardField label="Owner" value={shortId(vendor.owner_id ?? "—", 16)} />
+            </div>
+
+            <CardActions>
+              <a
+                href={`${STOREFRONT}/vendor/${vendor.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl px-3 font-inter text-[13px] font-semibold text-info transition-colors hover:bg-info-ghost"
+              >
+                <Eye className="h-4 w-4" /> Storefront
+              </a>
+              {vendor.is_verified && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={loading}
+                  onClick={() => revoke(vendor)}
+                  icon={<Ban className="h-4 w-4" />}
+                  className="text-warning hover:bg-warning-ghost"
+                >
+                  Revoke
+                </Button>
               )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={loading}
+                onClick={() => remove(vendor)}
+                icon={<Trash2 className="h-4 w-4" />}
+                className="text-error hover:bg-error-ghost"
+              >
+                Delete
+              </Button>
+            </CardActions>
+          </DataCard>
+        )}
+      />
     </div>
   );
 }

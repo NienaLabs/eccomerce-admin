@@ -1,164 +1,210 @@
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+"use client";
+
+import { useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { logoutAction } from "@/app/actions/auth";
-import { Menu, Bell, LogOut, Trash2 } from "lucide-react";
+import { Bell, LogOut, Trash2, ShieldAlert, BellOff } from "lucide-react";
 import { useNotifications } from "@/context/NotificationContext";
 import { resolveAdminNotificationRoute, type NotificationResponse } from "@/lib/api";
+import { findNavItem } from "@/lib/navigation";
+import { formatDateTime } from "@/lib/utils";
+import { Sheet } from "@/components/ui/Sheet";
+import { Button, IconButton } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 interface HeaderProps {
-  onMenuClick?: () => void;
   adminEmail?: string;
 }
 
-export function Header({ onMenuClick, adminEmail }: HeaderProps) {
+export function Header({ adminEmail }: HeaderProps) {
   const router = useRouter();
-  const [showNotifications, setShowNotifications] = useState(false);
-  const { notifications, unreadCount, isLoading, markAsRead, markAllAsRead, deleteNotification, clearAll, pushPermissionStatus, requestPushPermission } = useNotifications();
+  const pathname = usePathname();
+  const [panelOpen, setPanelOpen] = useState(false);
+  const {
+    notifications,
+    unreadCount,
+    isLoading,
+    markAsRead,
+    markAllAsRead,
+    deleteNotification,
+    clearAll,
+    pushPermissionStatus,
+    requestPushPermission,
+  } = useNotifications();
+
+  const current = findNavItem(pathname);
 
   const handleOpen = (notif: NotificationResponse) => {
     if (!notif.is_read) markAsRead(notif.id);
     const route = resolveAdminNotificationRoute(notif.action_url);
     if (route) {
-      setShowNotifications(false);
+      setPanelOpen(false);
       router.push(route);
     }
   };
 
-  useEffect(() => {
-    if (pushPermissionStatus === 'default') {
-      requestPushPermission();
-    }
-  }, [pushPermissionStatus, requestPushPermission]);
-
   return (
-    <header className="flex h-16 flex-shrink-0 items-center gap-x-4 border-b border-surface-muted bg-surface px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8">
-      {/* Mobile Menu Toggle */}
-      <button
-        type="button"
-        className="lg:hidden p-2 -m-2 text-ink-muted hover:text-ink focus:outline-none focus:ring-2 focus:ring-primary rounded-md"
-        onClick={onMenuClick}
+    <>
+      <header
+        className="flex flex-shrink-0 items-center gap-3 border-b border-surface-muted bg-surface px-4 sm:px-6 lg:px-8"
+        style={{
+          paddingTop: "var(--safe-top)",
+          height: "calc(4rem + var(--safe-top))",
+        }}
       >
-        <span className="sr-only">Open sidebar</span>
-        <Menu className="h-6 w-6" aria-hidden="true" />
-      </button>
+        {/* Mobile has no hamburger — navigation lives in the bottom bar — so the
+            header carries the wayfinding instead. */}
+        <div className="flex min-w-0 items-center gap-2.5 lg:hidden">
+          <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-ink text-primary">
+            <ShieldAlert className="h-4 w-4" />
+          </span>
+          <h2 className="truncate font-inter text-base font-bold text-ink">
+            {current?.name ?? "AdminHub"}
+          </h2>
+        </div>
 
-      <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6 justify-end items-center">
-        {/* Notification Dropdown Container */}
-        <div className="relative">
-          <button 
-            onClick={() => setShowNotifications(!showNotifications)}
-            className="text-ink-muted hover:text-ink transition-colors p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary relative"
-          >
-            <span className="sr-only">View notifications</span>
-            <Bell className="h-5 w-5" aria-hidden="true" />
+        <div className="flex flex-1 items-center justify-end gap-1 sm:gap-2">
+          <div className="relative">
+            <IconButton
+              label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
+              onClick={() => setPanelOpen(true)}
+              icon={<Bell className="h-5 w-5" />}
+            />
             {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-error text-[10px] font-bold text-white">
-                {unreadCount > 99 ? '99+' : unreadCount}
+              <span className="pointer-events-none absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 font-inter text-[10px] font-bold text-white">
+                {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
-          </button>
+          </div>
 
-          {showNotifications && (
-            <div className="absolute right-0 mt-2 w-80 sm:w-96 origin-top-right rounded-lg bg-surface shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-50 flex flex-col max-h-[80vh]">
-              <div className="px-4 py-3 border-b border-surface-muted flex justify-between items-center gap-3">
-                <h3 className="text-sm font-semibold text-ink">Notifications</h3>
-                <div className="flex items-center gap-3">
-                  {unreadCount > 0 && (
-                    <button
-                      onClick={markAllAsRead}
-                      className="text-xs text-primary hover:text-primary-dark font-medium"
-                    >
-                      Mark all read
-                    </button>
-                  )}
-                  {notifications.length > 0 && (
-                    <button
-                      onClick={clearAll}
-                      className="text-xs text-error hover:opacity-80 font-medium"
-                    >
-                      Clear all
-                    </button>
-                  )}
-                </div>
-              </div>
-              
-              <div className="overflow-y-auto flex-1 p-2 space-y-1">
-                {pushPermissionStatus === 'default' && (
-                  <div className="m-2 p-3 bg-primary/10 border border-primary/20 rounded-md flex items-center justify-between">
-                    <div className="text-sm text-ink-soft">
-                      <strong className="block text-ink">Push Notifications</strong>
-                      Enable alerts
-                    </div>
-                    <button
-                      onClick={requestPushPermission}
-                      className="text-xs bg-primary text-white px-3 py-1.5 rounded hover:bg-primary-dark transition-colors font-medium"
-                    >
-                      Enable
-                    </button>
-                  </div>
-                )}
-                
-                {isLoading ? (
-                  <div className="text-center py-4 text-ink-muted text-sm">Loading...</div>
-                ) : notifications.length === 0 ? (
-                  <div className="text-center py-8 text-ink-muted text-sm">No notifications</div>
-                ) : (
-                  notifications.map((notif) => (
-                    <div
-                      key={notif.id}
-                      onClick={() => handleOpen(notif)}
-                      className={`group p-3 rounded-md cursor-pointer transition-colors ${
-                        notif.is_read ? 'bg-transparent hover:bg-surface-soft' : 'bg-primary/5 hover:bg-primary/10'
+          <div className="flex items-center gap-2 border-l border-surface-muted pl-2 sm:pl-3">
+            <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary-ghost font-inter text-sm font-bold text-ink">
+              {(adminEmail?.[0] ?? "A").toUpperCase()}
+            </span>
+            <span className="hidden max-w-[160px] truncate font-inter text-sm font-semibold text-ink sm:block">
+              {adminEmail || "System Admin"}
+            </span>
+            <form action={logoutAction}>
+              <IconButton
+                type="submit"
+                label="Sign out"
+                tone="danger"
+                icon={<LogOut className="h-4 w-4" />}
+              />
+            </form>
+          </div>
+        </div>
+      </header>
+
+      <Sheet
+        open={panelOpen}
+        onClose={() => setPanelOpen(false)}
+        title="Notifications"
+        description={unreadCount > 0 ? `${unreadCount} unread` : "You're all caught up"}
+        size="md"
+        footer={
+          notifications.length > 0 ? (
+            <>
+              <Button variant="ghost" onClick={clearAll} className="sm:w-auto" block>
+                Clear all
+              </Button>
+              {unreadCount > 0 && (
+                <Button
+                  variant="secondary"
+                  onClick={markAllAsRead}
+                  className="sm:w-auto"
+                  block
+                >
+                  Mark all read
+                </Button>
+              )}
+            </>
+          ) : undefined
+        }
+      >
+        {/* Asking for notification permission on mount — which is what this did —
+            gets the request auto-blocked in Chrome and Safari, because there's no
+            user gesture behind it. It's an explicit opt-in now. */}
+        {pushPermissionStatus === "default" && (
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-primary-border bg-primary-ghost p-4">
+            <div className="min-w-0">
+              <p className="font-inter text-sm font-bold text-ink">Push notifications</p>
+              <p className="mt-0.5 font-open-sans text-xs text-ink-soft">
+                Get alerted on this device when something needs you.
+              </p>
+            </div>
+            <Button size="sm" onClick={requestPushPermission} className="flex-shrink-0">
+              Enable
+            </Button>
+          </div>
+        )}
+
+        {pushPermissionStatus === "denied" && (
+          <div className="mb-4 flex items-start gap-3 rounded-xl border border-surface-muted bg-surface-soft p-4">
+            <BellOff className="mt-0.5 h-4 w-4 flex-shrink-0 text-ink-muted" />
+            <p className="font-open-sans text-xs text-ink-soft">
+              Push is blocked for this site. Re-enable it in your browser or system
+              notification settings.
+            </p>
+          </div>
+        )}
+
+        {isLoading ? (
+          <p className="py-8 text-center font-open-sans text-sm text-ink-muted">Loading…</p>
+        ) : notifications.length === 0 ? (
+          <EmptyState
+            icon={<Bell className="h-10 w-10" />}
+            title="No notifications"
+            message="Vendor flags, order events and support activity will show up here."
+            className="border-0 bg-transparent py-8"
+          />
+        ) : (
+          <div className="space-y-1.5">
+            {notifications.map((notif) => (
+              <div
+                key={notif.id}
+                className={`group flex items-start gap-2 rounded-xl p-3 transition-colors ${
+                  notif.is_read ? "bg-surface hover:bg-surface-soft" : "bg-primary-ghost"
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => handleOpen(notif)}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <div className="flex items-start gap-2">
+                    {!notif.is_read && (
+                      <span
+                        className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-primary"
+                        aria-label="Unread"
+                      />
+                    )}
+                    <p
+                      className={`font-inter text-sm ${
+                        notif.is_read ? "text-ink-soft" : "font-semibold text-ink"
                       }`}
                     >
-                      <div className="flex justify-between items-start gap-2">
-                        <p className={`text-sm ${notif.is_read ? 'text-ink-soft' : 'text-ink font-medium'}`}>
-                          {notif.title}
-                        </p>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          {!notif.is_read && (
-                            <span className="h-2 w-2 rounded-full bg-primary mt-1.5" />
-                          )}
-                          <button
-                            onClick={(e) => { e.stopPropagation(); deleteNotification(notif.id); }}
-                            title="Delete notification"
-                            className="text-ink-ghost hover:text-error opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                      <p className="text-xs text-ink-muted mt-1 line-clamp-2">{notif.body}</p>
-                      <p className="text-[10px] text-ink-ghost mt-2">
-                        {new Date(notif.created_at).toLocaleString()}
-                      </p>
-                    </div>
-                  ))
-                )}
+                      {notif.title}
+                    </p>
+                  </div>
+                  <p className="mt-1 line-clamp-2 font-open-sans text-xs text-ink-muted">
+                    {notif.body}
+                  </p>
+                  <p className="mt-1.5 font-open-sans text-[10px] text-ink-ghost">
+                    {formatDateTime(notif.created_at)}
+                  </p>
+                </button>
+                <IconButton
+                  label="Delete notification"
+                  tone="danger"
+                  onClick={() => deleteNotification(notif.id)}
+                  icon={<Trash2 className="h-4 w-4" />}
+                />
               </div>
-            </div>
-          )}
-        </div>
-
-        {/* Admin Profile & Logout */}
-        <div className="flex items-center gap-x-3 pl-4 border-l border-surface-muted">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary font-inter font-bold text-ink text-sm">
-            A
+            ))}
           </div>
-          <span className="hidden sm:block text-sm font-semibold text-ink font-inter truncate max-w-[120px]">
-            {adminEmail || "System Admin"}
-          </span>
-          <form action={logoutAction}>
-            <button
-              type="submit"
-              title="Sign out"
-              className="p-2 text-ink-muted hover:text-error transition-colors rounded-full focus:outline-none focus:ring-2 focus:ring-error"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
-          </form>
-        </div>
-      </div>
-    </header>
+        )}
+      </Sheet>
+    </>
   );
 }

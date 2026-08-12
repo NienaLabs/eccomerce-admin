@@ -1,14 +1,16 @@
-import { UsersClient } from "./UsersClient";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { fetchList, type AdminUser } from "@/lib/api";
+import { UsersClient } from "./UsersClient";
 
-async function getUsers(token: string) {
-  return fetchList<AdminUser>("/admin/users", token);
-}
+export const metadata = { title: "Users | AdminHub" };
 
 export default async function UsersPage() {
   const cookieStore = await cookies();
-  const token = cookieStore.get("admin_token")?.value || "";
-  const users = await getUsers(token);
+  const token = cookieStore.get("admin_token")?.value;
+  if (!token) redirect("/login");
+
+  const users = await fetchList<AdminUser>("/admin/users", token);
+
   return <UsersClient initialUsers={users} />;
 }

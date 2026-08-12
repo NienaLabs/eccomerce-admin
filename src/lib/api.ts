@@ -71,7 +71,6 @@ export interface AdminProduct {
   description: string;
   actual_price: number;
   discount_price?: number;
-  stock_quantity: number;
   is_active: boolean;
   is_featured: boolean;
   admin_price_override?: number;
@@ -111,8 +110,81 @@ export interface SystemBroadcast {
   admin_id: string | null;
   title: string;
   message: string;
+  /** "all" | "users" | "vendors" | "specific" */
   target_audience: string;
+  /** Populated only for a targeted send. */
+  target_user_ids?: string[] | null;
   created_at: string;
+}
+
+/** Platform-wide analytics — GET /analytics/admin/overview. */
+export interface PlatformOverview {
+  total_users: number;
+  total_vendors: number;
+  total_products: number;
+  total_orders: number;
+  total_revenue: number;
+  orders_today: number;
+  revenue_today: number;
+  pending_orders: number;
+  top_vendors: {
+    vendor_id?: string;
+    store_name?: string;
+    revenue?: number;
+    order_count?: number;
+  }[];
+}
+
+export type OrderStatus =
+  | "pending"
+  | "confirmed"
+  | "processing"
+  | "shipped"
+  | "delivered"
+  | "cancelled"
+  | "refunded";
+
+export interface AdminOrder {
+  id: string;
+  user_id: string;
+  user_email?: string | null;
+  user_name?: string | null;
+  status: OrderStatus;
+  subtotal: number;
+  discount_amount?: number | null;
+  shipping_fee?: number | null;
+  total_amount: number;
+  item_count: number;
+  vendor_names: string[];
+  agent_name?: string | null;
+  agent_phone?: string | null;
+  commission_aggregated: boolean;
+  created_at?: string | null;
+}
+
+export interface AdminOrderItem {
+  id: string;
+  product_id: string;
+  product_name?: string | null;
+  vendor_id: string;
+  vendor_name?: string | null;
+  quantity: number;
+  unit_price: number;
+  discount_price?: number | null;
+}
+
+export interface AdminOrderDetail extends AdminOrder {
+  shipping_address?: Record<string, unknown> | null;
+  notes?: string | null;
+  items: AdminOrderItem[];
+  status_history: { status: string; note?: string | null; changed_at?: string | null }[];
+}
+
+export interface AdminOrderPage {
+  items: AdminOrder[];
+  total: number;
+  skip: number;
+  limit: number;
 }
 
 export interface TicketMessage {

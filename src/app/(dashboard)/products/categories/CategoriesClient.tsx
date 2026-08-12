@@ -1,199 +1,268 @@
 "use client";
 
 import { useState } from "react";
-import { FolderTree, Plus, Trash2, X } from "lucide-react";
+import { Tag, Plus, Trash2 } from "lucide-react";
 import { clientApi } from "@/lib/api";
 import type { Category } from "./page";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Badge } from "@/components/ui/Badge";
+import { Button, IconButton } from "@/components/ui/Button";
+import { Sheet } from "@/components/ui/Sheet";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Field, TextInput, Select } from "@/components/ui/Filters";
+import { DataView, DataCard, CardActions } from "@/components/ui/DataView";
+import { useFeedback } from "@/components/ui/Feedback";
 
-export function CategoriesClient({ initialCategories }: { initialCategories: Category[] }) {
+const CATEGORY_ENUMS = [
+  "electronics",
+  "fashion",
+  "home_living",
+  "beauty_health",
+  "sports_outdoors",
+  "books_media",
+  "food_groceries",
+  "toys_games",
+  "automotive",
+  "other",
+];
+
+const formatEnum = (value: string) =>
+  value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+const slugify = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)+/g, "");
+
+export function CategoriesClient({
+  initialCategories,
+}: {
+  initialCategories: Category[];
+}) {
+  const { toast, confirm } = useFeedback();
+
   const [categories, setCategories] = useState<Category[]>(initialCategories);
   const [loading, setLoading] = useState(false);
-  const [isAdding, setIsAdding] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newSlug, setNewSlug] = useState("");
-  const [newEnum, setNewEnum] = useState("other");
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [categoryEnum, setCategoryEnum] = useState("other");
 
-  const categoryEnums = [
-    "electronics", "fashion", "home_living", "beauty_health", 
-    "sports_outdoors", "books_media", "food_groceries", 
-    "toys_games", "automotive", "other"
-  ];
+  const reset = () => {
+    setName("");
+    setSlug("");
+    setCategoryEnum("other");
+  };
 
-  const formatEnum = (val: string) =>
-    val.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const create = async () => {
+    if (!name.trim() || !slug.trim()) {
+      toast("A name and slug are both required.", "warning");
+      return;
+    }
 
-  const handleCreate = async () => {
-    if (!newName || !newSlug) return;
-    
+    setLoading(true);
     try {
-      setLoading(true);
       const res = await clientApi(`/categories/`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ 
-          name: newName, 
-          slug: newSlug,
-          category_enum: newEnum
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          slug: slug.trim(),
+          category_enum: categoryEnum,
         }),
       });
-      if (!res.ok) throw new Error("Failed to create category");
-      
-      const newCategory = await res.json();
-      setCategories([...categories, newCategory]);
-      setIsAdding(false);
-      setNewName("");
-      setNewSlug("");
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null);
+        toast(
+          typeof detail?.detail === "string" ? detail.detail : "Could not create it.",
+          "error"
+        );
+        return;
+      }
+      const created: Category = await res.json();
+      setCategories([...categories, created]);
+      setAdding(false);
+      reset();
+      toast(`"${created.name}" added.`, "success");
     } catch {
-      alert("Error creating category");
+      toast("Network error — the category was not created.", "error");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this category?")) return;
-    
+  const remove = async (category: Category) => {
+    const ok = await confirm({
+      title: "Delete this category?",
+      message: `"${category.name}" will be removed. Products filed under it keep their listing but lose this grouping.`,
+      confirmLabel: "Delete category",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setLoading(true);
     try {
-      setLoading(true);
-      const res = await clientApi(`/categories/${id}`, {
-        method: "DELETE",
-              });
-      if (!res.ok) throw new Error("Failed to delete category");
-      
-      setCategories(categories.filter(c => c.id !== id));
+      const res = await clientApi(`/categories/${category.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed");
+      setCategories(categories.filter((c) => c.id !== category.id));
+      toast("Category deleted.", "success");
     } catch {
-      alert("Error deleting category");
+      toast("Could not delete the category.", "error");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-end">
-        <div>
-          <h1 className="text-3xl font-bold font-inter tracking-tight text-ink flex items-center">
-            <FolderTree className="w-8 h-8 mr-3 text-primary" />
-            Category Management
-          </h1>
-          <p className="text-ink-soft mt-1">
-            Organize products by managing the platform&apos;s category structure.
-          </p>
-        </div>
-        <button 
-          onClick={() => setIsAdding(true)}
-          className="px-4 py-2 bg-primary text-surface rounded-md font-bold hover:bg-primary-dim transition-colors flex items-center"
-        >
-          <Plus className="w-4 h-4 mr-2" /> Add Category
-        </button>
-      </div>
+    <div className="space-y-5 sm:space-y-6">
+      <PageHeader
+        title="Categories"
+        icon={<Tag className="h-6 w-6 text-ink-muted sm:h-7 sm:w-7" />}
+        description="The category structure shoppers browse by."
+        action={
+          <Button onClick={() => setAdding(true)} icon={<Plus className="h-4 w-4" />}>
+            Add category
+          </Button>
+        }
+      />
 
-      <div className="bg-surface border border-surface-muted rounded-xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-surface-muted">
-            <thead className="bg-surface-soft">
-              <tr>
-                <th className="px-6 py-4 text-left text-xs font-bold text-ink-muted uppercase tracking-wider font-inter">Name</th>
-                <th className="px-6 py-4 text-left text-xs font-bold text-ink-muted uppercase tracking-wider font-inter">Slug</th>
-                <th className="px-6 py-4 text-left text-xs font-bold text-ink-muted uppercase tracking-wider font-inter">Enum Group</th>
-                <th className="px-6 py-4 text-right text-xs font-bold text-ink-muted uppercase tracking-wider font-inter">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-surface divide-y divide-surface-muted">
-              {categories.length > 0 ? categories.map((category) => (
-                <tr key={category.id} className="hover:bg-surface-soft/50 transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-ink font-inter">
-                    {category.name}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-muted font-mono">
-                    /{category.slug}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-bold bg-surface-muted text-ink-soft">
-                      {formatEnum(category.category_enum)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium flex justify-end gap-3 items-center">
-                    <button 
-                      disabled={loading}
-                      onClick={() => handleDelete(category.id)}
-                      className="text-error hover:text-error-dim font-bold p-2"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              )) : (
-                <tr><td colSpan={4} className="px-6 py-8 text-center text-ink-muted">No categories found.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <DataView
+        items={categories}
+        keyOf={(category) => category.id}
+        empty={
+          <EmptyState
+            icon={<Tag className="h-10 w-10" />}
+            title="No categories yet"
+            message="Add one so shoppers have something to browse by."
+            action={
+              <Button onClick={() => setAdding(true)} icon={<Plus className="h-4 w-4" />}>
+                Add category
+              </Button>
+            }
+          />
+        }
+        columns={[
+          {
+            header: "Name",
+            cell: (category) => (
+              <span className="font-inter text-sm font-semibold text-ink">
+                {category.name}
+              </span>
+            ),
+          },
+          {
+            header: "Slug",
+            cell: (category) => (
+              <span className="font-mono text-sm text-ink-muted">/{category.slug}</span>
+            ),
+          },
+          {
+            header: "Group",
+            cell: (category) => (
+              <Badge tone="neutral">{formatEnum(category.category_enum)}</Badge>
+            ),
+          },
+          {
+            header: "Actions",
+            align: "right",
+            cell: (category) => (
+              <IconButton
+                label={`Delete ${category.name}`}
+                tone="danger"
+                disabled={loading}
+                onClick={() => remove(category)}
+                icon={<Trash2 className="h-4 w-4" />}
+              />
+            ),
+          },
+        ]}
+        card={(category) => (
+          <DataCard>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-inter text-sm font-semibold text-ink">{category.name}</p>
+                <p className="mt-0.5 truncate font-mono text-xs text-ink-muted">
+                  /{category.slug}
+                </p>
+              </div>
+              <Badge tone="neutral">{formatEnum(category.category_enum)}</Badge>
+            </div>
+            <CardActions>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={loading}
+                onClick={() => remove(category)}
+                icon={<Trash2 className="h-4 w-4" />}
+                className="text-error hover:bg-error-ghost"
+              >
+                Delete
+              </Button>
+            </CardActions>
+          </DataCard>
+        )}
+      />
 
-      {isAdding && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm">
-          <div className="bg-surface rounded-xl shadow-xl w-full max-w-md">
-            <div className="p-6 border-b border-surface-muted flex justify-between items-center bg-surface-soft">
-              <h2 className="text-xl font-bold font-inter">Add New Category</h2>
-              <button onClick={() => setIsAdding(false)} className="text-ink-muted hover:text-ink"><X className="h-6 w-6"/></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-bold text-ink mb-1">Name</label>
-                <input 
-                  type="text" 
-                  value={newName}
-                  onChange={(e) => {
-                    setNewName(e.target.value);
-                    setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, ''));
-                  }}
-                  className="w-full border-surface-muted rounded-md shadow-sm focus:border-primary focus:ring-primary text-ink"
-                  placeholder="e.g. Smart Watches"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-ink mb-1">Slug URL</label>
-                <input 
-                  type="text" 
-                  value={newSlug}
-                  onChange={(e) => setNewSlug(e.target.value)}
-                  className="w-full border-surface-muted rounded-md shadow-sm focus:border-primary focus:ring-primary text-ink font-mono text-sm"
-                  placeholder="smart-watches"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-ink mb-1">System Enum Group</label>
-                <select
-                  value={newEnum}
-                  onChange={(e) => setNewEnum(e.target.value)}
-                  className="w-full border-surface-muted rounded-md shadow-sm focus:border-primary focus:ring-primary text-ink"
-                >
-                  {categoryEnums.map(e => <option key={e} value={e}>{formatEnum(e)}</option>)}
-                </select>
-              </div>
-              <div className="flex gap-3 mt-6 justify-end">
-                <button 
-                  disabled={loading}
-                  onClick={() => setIsAdding(false)}
-                  className="px-4 py-2 text-ink-soft hover:text-ink font-bold transition-colors"
-                >
-                  Cancel
-                </button>
-                <button 
-                  disabled={loading}
-                  onClick={handleCreate}
-                  className="px-4 py-2 bg-primary text-surface rounded-md font-bold hover:bg-primary-dim transition-colors"
-                >
-                  {loading ? "Creating..." : "Create Category"}
-                </button>
-              </div>
-            </div>
-          </div>
+      <Sheet
+        open={adding}
+        onClose={() => setAdding(false)}
+        title="Add category"
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setAdding(false)}
+              className="sm:w-auto"
+              block
+            >
+              Cancel
+            </Button>
+            <Button onClick={create} disabled={loading} className="sm:w-auto" block>
+              {loading ? "Creating…" : "Create category"}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field label="Name">
+            <TextInput
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                setSlug(slugify(e.target.value));
+              }}
+              placeholder="e.g. Smart Watches"
+            />
+          </Field>
+
+          <Field label="Slug" hint="Used in the storefront URL.">
+            <TextInput
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+              placeholder="smart-watches"
+              className="font-mono"
+            />
+          </Field>
+
+          <Field
+            label="System group"
+            hint="Which built-in group this category rolls up to."
+          >
+            <Select
+              value={categoryEnum}
+              onChange={setCategoryEnum}
+              label="System group"
+              className="w-full sm:w-full"
+              options={CATEGORY_ENUMS.map((value) => ({
+                value,
+                label: formatEnum(value),
+              }))}
+            />
+          </Field>
         </div>
-      )}
+      </Sheet>
     </div>
   );
 }

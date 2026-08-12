@@ -20,6 +20,15 @@ export default async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    /*
+     * Everything except:
+     *  - api routes and Next's own static output
+     *  - the PWA surface. These must stay publicly reachable: a signed-out
+     *    browser fetching /sw.js or /manifest.webmanifest would otherwise get a
+     *    307 to /login, so the worker would never install, the manifest would
+     *    never parse, and the app would not be installable at all. The offline
+     *    page is likewise served *because* the session can't be checked.
+     */
+    '/((?!api|_next/static|_next/image|favicon.ico|sw\\.js|offline\\.html|manifest\\.webmanifest|firebase-messaging-sw\\.js|icons/).*)',
   ],
 };

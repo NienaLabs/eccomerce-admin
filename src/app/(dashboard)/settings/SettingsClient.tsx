@@ -1,219 +1,214 @@
 "use client";
 
 import { useState } from "react";
-import { Settings, ShieldAlert, Smartphone, Percent, ToggleLeft, ToggleRight, Save, CheckCircle2 } from "lucide-react";
+import Link from "next/link";
+import {
+  Settings as SettingsIcon,
+  Save,
+  ToggleLeft,
+  ToggleRight,
+  ArrowRight,
+  Rocket,
+  Banknote,
+} from "lucide-react";
 import { clientApi, type SystemSetting } from "@/lib/api";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { TextInput } from "@/components/ui/Filters";
+import { useFeedback } from "@/components/ui/Feedback";
 
-export function SettingsClient({ initialSettings }: { initialSettings: SystemSetting[] }) {
+/**
+ * Settings that don't have a dedicated screen.
+ *
+ * `maintenance_mode`, `min_app_version` and `vendor_registration` moved to
+ * Releases, and `platform_commission` is edited on Commissions. Editing the
+ * same key from two places meant one screen silently went stale, so those keys
+ * are linked out to rather than duplicated.
+ */
+const OWNED_ELSEWHERE: Record<string, { screen: string; href: string }> = {
+  maintenance_mode: { screen: "Releases", href: "/releases" },
+  min_app_version: { screen: "Releases", href: "/releases" },
+  vendor_registration: { screen: "Releases", href: "/releases" },
+  platform_commission: { screen: "Commissions", href: "/commissions" },
+};
+
+const humanise = (key: string) =>
+  key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+export function SettingsClient({
+  initialSettings,
+}: {
+  initialSettings: SystemSetting[];
+}) {
+  const { toast } = useFeedback();
+
   const [settings, setSettings] = useState<SystemSetting[]>(initialSettings);
-  const [loading, setLoading] = useState(false);
-  const [savedKey, setSavedKey] = useState<string | null>(null);
-  const [errorKey, setErrorKey] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(initialSettings.map((s) => [s.key, s.value]))
+  );
 
-  // Local state for text/number inputs before saving
-  const [formValues, setFormValues] = useState<Record<string, string>>(() => {
-    const vals: Record<string, string> = {};
-    initialSettings.forEach(s => vals[s.key] = s.value);
-    return vals;
-  });
-
-  const getSetting = (key: string) => settings.find(s => s.key === key);
-
-  const showSaved = (key: string) => {
-    setSavedKey(key);
-    setTimeout(() => setSavedKey(null), 2500);
-  };
-
-  // The backend rejects out-of-range values (e.g. a commission of 500%), and the
-  // admin needs to see *why*, not just that it failed.
-  const showError = (key: string, message?: string) => {
-    setErrorKey(key);
-    setErrorMessage(message ?? null);
-    setTimeout(() => { setErrorKey(null); setErrorMessage(null); }, 5000);
-  };
-
-  const handleToggle = async (key: string) => {
-    const setting = getSetting(key);
-    if (!setting) return;
-
-    const newValue = setting.value === "true" ? "false" : "true";
-    
+  const save = async (key: string, value: string) => {
+    setBusyKey(key);
     try {
-      setLoading(true);
       const res = await clientApi(`/admin/settings/${key}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ value: newValue }),
-      });
-      if (!res.ok) throw new Error("Failed to update setting");
-      
-      const updated = await res.json();
-      setSettings(settings.map(s => s.key === key ? updated : s));
-      setFormValues({ ...formValues, [key]: updated.value });
-      showSaved(key);
-    } catch {
-      showError(key);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSaveValue = async (key: string) => {
-    const newValue = formValues[key];
-    if (newValue === undefined) return;
-
-    try {
-      setLoading(true);
-      const res = await clientApi(`/admin/settings/${key}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ value: newValue }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value }),
       });
       if (!res.ok) {
         const detail = await res.json().catch(() => null);
-        const message = typeof detail?.detail === "string" ? detail.detail : undefined;
-        showError(key, message);
+        // The backend rejects out-of-range values, and the admin needs to see
+        // *why* — not just that it failed.
+        toast(
+          typeof detail?.detail === "string" ? detail.detail : "Could not save that value.",
+          "error"
+        );
         return;
       }
-
-      const updated = await res.json();
-      setSettings(settings.map(s => s.key === key ? updated : s));
-      showSaved(key);
+      const updated: SystemSetting = await res.json();
+      setSettings((current) => current.map((s) => (s.key === key ? updated : s)));
+      setValues((current) => ({ ...current, [key]: updated.value }));
+      toast(`${humanise(key)} saved.`, "success");
     } catch {
-      showError(key);
+      toast("Network error — nothing was saved.", "error");
     } finally {
-      setLoading(false);
+      setBusyKey(null);
     }
   };
 
-  const handleInputChange = (key: string, val: string) => {
-    setFormValues(prev => ({ ...prev, [key]: val }));
-  };
+  const isBoolean = (setting: SystemSetting) =>
+    setting.value === "true" || setting.value === "false";
 
-  // Helper to render toggle switches
-  const renderToggle = (key: string, title: string, icon: React.ReactNode, danger: boolean = false) => {
-    const setting = getSetting(key);
-    if (!setting) return null;
-    const isEnabled = setting.value === "true";
-
-    return (
-      <div className={`p-6 rounded-xl border flex flex-col gap-3 ${danger ? 'bg-error-ghost border-error-ghost' : 'bg-surface border-surface-muted'}`}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-start">
-            <div className={`p-2 rounded-lg mr-4 ${danger ? 'bg-error/10 text-error' : 'bg-primary/10 text-primary'}`}>
-              {icon}
-            </div>
-            <div>
-              <h3 className={`text-lg font-bold font-inter ${danger ? 'text-error' : 'text-ink'}`}>{title}</h3>
-              <p className={`text-sm mt-1 ${danger ? 'text-error/80' : 'text-ink-soft'}`}>{setting.description}</p>
-            </div>
-          </div>
-          <button 
-            onClick={() => handleToggle(key)}
-            disabled={loading}
-            aria-pressed={isEnabled}
-            className={`flex items-center justify-center transition-colors disabled:opacity-50 ${isEnabled ? (danger ? 'text-error' : 'text-primary') : 'text-ink-muted hover:text-ink-soft'}`}
-          >
-            {isEnabled ? <ToggleRight className="w-10 h-10" /> : <ToggleLeft className="w-10 h-10" />}
-          </button>
-        </div>
-        {savedKey === key && (
-          <div className="flex items-center text-xs text-success font-bold">
-            <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Saved successfully
-          </div>
-        )}
-        {errorKey === key && (
-          <div className="flex items-center text-xs text-error font-bold">
-            {errorMessage ?? "Failed to save. Please try again."}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // Helper to render value inputs
-  const renderInput = (key: string, title: string, icon: React.ReactNode) => {
-    const setting = getSetting(key);
-    if (!setting) return null;
-    
-    const hasChanged = formValues[key] !== setting.value;
-
-    return (
-      <div className="p-6 rounded-xl border border-surface-muted bg-surface flex flex-col gap-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-start">
-            <div className="p-2 rounded-lg bg-surface-muted text-ink-muted mr-4">
-              {icon}
-            </div>
-            <div>
-              <h3 className="text-lg font-bold font-inter text-ink">{title}</h3>
-              <p className="text-sm mt-1 text-ink-soft">{setting.description}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <input 
-              type="text" 
-              value={formValues[key] || ""}
-              onChange={(e) => handleInputChange(key, e.target.value)}
-              className="border-surface-muted rounded-md shadow-sm focus:border-primary focus:ring-primary text-ink w-full sm:w-32 text-right font-mono"
-            />
-            <button 
-              onClick={() => handleSaveValue(key)}
-              disabled={!hasChanged || loading}
-              title="Save"
-              className={`p-2 rounded-md transition-colors ${hasChanged ? 'bg-primary text-surface hover:bg-primary-dim' : 'bg-surface-muted text-ink-muted cursor-not-allowed'}`}
-            >
-              <Save className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-        {savedKey === key && (
-          <div className="flex items-center text-xs text-success font-bold">
-            <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Saved successfully
-          </div>
-        )}
-        {errorKey === key && (
-          <div className="flex items-center text-xs text-error font-bold">
-            {errorMessage ?? "Failed to save. Please try again."}
-          </div>
-        )}
-      </div>
-    );
-  };
+  const editable = settings.filter((s) => !OWNED_ELSEWHERE[s.key]);
+  const elsewhere = settings.filter((s) => OWNED_ELSEWHERE[s.key]);
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold font-inter tracking-tight text-ink flex items-center">
-          <Settings className="w-8 h-8 mr-3 text-ink-muted" />
-          Global App Settings
-        </h1>
-        <p className="text-ink-soft mt-1">
-          Configure platform-wide settings, feature flags, and developer rules.
-        </p>
-      </div>
+    <div className="space-y-5 sm:space-y-6">
+      <PageHeader
+        title="Settings"
+        icon={<SettingsIcon className="h-6 w-6 text-ink-muted sm:h-7 sm:w-7" />}
+        description="Global configuration values."
+      />
 
-      <div className="space-y-6">
-        <h2 className="text-xl font-bold font-inter border-b border-surface-muted pb-2">Feature Flags</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {renderToggle("vendor_registration", "Vendor Registration", <Settings className="w-6 h-6" />)}
-          {renderToggle("maintenance_mode", "Maintenance Mode", <ShieldAlert className="w-6 h-6" />, true)}
-        </div>
-      </div>
+      {editable.length === 0 ? (
+        <EmptyState
+          icon={<SettingsIcon className="h-10 w-10" />}
+          title="Nothing to configure here"
+          message="Every setting the backend exposes has its own dedicated screen."
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2">
+          {editable.map((setting) => {
+            const boolean = isBoolean(setting);
+            const enabled = setting.value === "true";
+            const changed = values[setting.key] !== setting.value;
+            const busy = busyKey === setting.key;
 
-      <div className="space-y-6">
-        <h2 className="text-xl font-bold font-inter border-b border-surface-muted pb-2 mt-8">Global Variables</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {renderInput("platform_commission", "Platform Commission (%)", <Percent className="w-6 h-6" />)}
-          {renderInput("commission_payment_due_days", "Commission Payment Window (days)", <Percent className="w-6 h-6" />)}
-          {renderInput("min_app_version", "Minimum App Version", <Smartphone className="w-6 h-6" />)}
+            return (
+              <div
+                key={setting.key}
+                className="flex flex-col gap-3 rounded-xl border border-surface-muted bg-surface p-4 shadow-[var(--shadow-raised-1)] sm:p-5"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="font-inter text-base font-bold text-ink">
+                      {humanise(setting.key)}
+                    </h3>
+                    {setting.description && (
+                      <p className="mt-1 font-open-sans text-sm text-ink-soft">
+                        {setting.description}
+                      </p>
+                    )}
+                    <p className="mt-1 font-mono text-xs text-ink-ghost">{setting.key}</p>
+                  </div>
+
+                  {boolean && (
+                    <button
+                      type="button"
+                      onClick={() => save(setting.key, enabled ? "false" : "true")}
+                      disabled={busy}
+                      aria-pressed={enabled}
+                      aria-label={`${humanise(setting.key)}: ${enabled ? "on" : "off"}`}
+                      className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
+                        enabled ? "text-ink" : "text-ink-ghost hover:text-ink-soft"
+                      }`}
+                    >
+                      {enabled ? (
+                        <ToggleRight className="h-8 w-8" />
+                      ) : (
+                        <ToggleLeft className="h-8 w-8" />
+                      )}
+                    </button>
+                  )}
+                </div>
+
+                {!boolean && (
+                  <div className="flex items-center gap-2">
+                    <TextInput
+                      value={values[setting.key] ?? ""}
+                      onChange={(e) =>
+                        setValues({ ...values, [setting.key]: e.target.value })
+                      }
+                      aria-label={humanise(setting.key)}
+                      className="font-mono"
+                    />
+                    <Button
+                      onClick={() => save(setting.key, values[setting.key])}
+                      disabled={!changed || busy}
+                      aria-label={`Save ${humanise(setting.key)}`}
+                      className="flex-shrink-0 !px-4"
+                      icon={<Save className="h-4 w-4" />}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
-      </div>
+      )}
+
+      {elsewhere.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="font-inter text-base font-bold text-ink">Managed elsewhere</h2>
+          <p className="font-open-sans text-sm text-ink-soft">
+            These have dedicated screens with the context and confirmations they need.
+          </p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {Object.entries(
+              elsewhere.reduce<Record<string, string[]>>((acc, setting) => {
+                const { screen } = OWNED_ELSEWHERE[setting.key];
+                acc[screen] = [...(acc[screen] ?? []), setting.key];
+                return acc;
+              }, {})
+            ).map(([screen, keys]) => (
+              <Link
+                key={screen}
+                href={OWNED_ELSEWHERE[keys[0]].href}
+                className="flex min-h-14 items-center gap-3 rounded-xl border border-surface-muted bg-surface p-3 transition-colors hover:border-primary-border hover:bg-surface-soft"
+              >
+                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-surface-soft text-ink-muted">
+                  {screen === "Releases" ? (
+                    <Rocket className="h-5 w-5" />
+                  ) : (
+                    <Banknote className="h-5 w-5" />
+                  )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-inter text-sm font-semibold text-ink">
+                    {screen}
+                  </span>
+                  <span className="block truncate font-mono text-xs text-ink-muted">
+                    {keys.join(", ")}
+                  </span>
+                </span>
+                <ArrowRight className="h-4 w-4 flex-shrink-0 text-ink-muted" />
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

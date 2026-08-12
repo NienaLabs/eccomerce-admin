@@ -3,23 +3,14 @@ import { redirect } from "next/navigation";
 import { fetchList, type AdminProduct } from "@/lib/api";
 import { ProductsClient } from "./ProductsClient";
 
-async function getProducts(token: string) {
-  return fetchList<AdminProduct>("/admin/products", token);
-}
+export const metadata = { title: "Products | AdminHub" };
 
 export default async function ProductsPage() {
   const cookieStore = await cookies();
   const token = cookieStore.get("admin_token")?.value;
+  if (!token) redirect("/login");
 
-  if (!token) {
-    redirect("/login");
-  }
+  const products = await fetchList<AdminProduct>("/admin/products", token);
 
-  const products = await getProducts(token);
-
-  return (
-    <div className="max-w-7xl mx-auto">
-      <ProductsClient initialProducts={products} />
-    </div>
-  );
+  return <ProductsClient initialProducts={products} />;
 }

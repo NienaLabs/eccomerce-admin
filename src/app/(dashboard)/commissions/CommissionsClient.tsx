@@ -1,12 +1,39 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
-  Banknote, TrendingUp, Clock, CheckCircle2, AlertCircle,
-  ChevronDown, ChevronUp, Store, Package, XCircle,
-  ReceiptText, Filter, Search, RefreshCw, Percent, RotateCcw
+  Banknote,
+  TrendingUp,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  Store,
+  Package,
+  XCircle,
+  ReceiptText,
+  RefreshCw,
+  Percent,
+  RotateCcw,
 } from "lucide-react";
 import { clientApi } from "@/lib/api";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { StatCard } from "@/components/ui/StatCard";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Sheet } from "@/components/ui/Sheet";
+import { EmptyState } from "@/components/ui/EmptyState";
+import {
+  FilterBar,
+  SearchInput,
+  Select,
+  Field,
+  TextInput,
+} from "@/components/ui/Filters";
+import { LocaleNumber } from "@/components/ui/LocaleNumber";
+import { useFeedback } from "@/components/ui/Feedback";
+import { formatGHS, formatDate, shortId, cn } from "@/lib/utils";
 
 interface CommissionEntry {
   id: string;
@@ -43,16 +70,31 @@ interface VendorSummary {
   entries: CommissionEntry[];
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-800 border-amber-200",
-  billed: "bg-blue-100 text-blue-800 border-blue-200",
-  paid: "bg-emerald-100 text-emerald-800 border-emerald-200",
-};
+// The old table used raw Tailwind palette colours (amber-100, blue-500,
+// emerald-600) that exist nowhere in design.md. These map onto the system's
+// feedback tokens instead.
+const ENTRY_TONE = {
+  pending: "warning",
+  billed: "info",
+  paid: "success",
+} as const;
 
-const GHS = (n: number) =>
-  `GH₵ ${Math.abs(n).toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const STATUS_OPTIONS = [
+  { value: "all", label: "All statuses" },
+  { value: "pending", label: "Pending" },
+  { value: "billed", label: "Billed" },
+  { value: "paid", label: "Paid" },
+];
 
-export function CommissionsClient({ initialData, initialGlobalRate }: { initialData: VendorSummary[]; initialGlobalRate: number }) {
+export function CommissionsClient({
+  initialData,
+  initialGlobalRate,
+}: {
+  initialData: VendorSummary[];
+  initialGlobalRate: number;
+}) {
+  const { toast, confirm } = useFeedback();
+
   const [data, setData] = useState<VendorSummary[]>(initialData);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -61,15 +103,20 @@ export function CommissionsClient({ initialData, initialGlobalRate }: { initialD
   const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [mounted, setMounted] = useState(false);
 
-  // Mark paid modal state
-  const [payModal, setPayModal] = useState<{ vendorId: string; entryIds: string[]; total: number } | null>(null);
+  const [payModal, setPayModal] = useState<{
+    vendorId: string;
+    storeName: string;
+    entryIds: string[];
+    total: number;
+  } | null>(null);
   const [payMethod, setPayMethod] = useState("bank");
   const [payRef, setPayRef] = useState("");
   const [payNote, setPayNote] = useState("");
 
-  useEffect(() => { setMounted(true); }, []);
+  const [rateInputs, setRateInputs] = useState<Record<string, string>>({});
+  const [globalRateInput, setGlobalRateInput] = useState(String(initialGlobalRate));
+  const [globalRate, setGlobalRate] = useState(initialGlobalRate);
 
   const refresh = async () => {
     setLoading(true);
@@ -78,40 +125,53 @@ export function CommissionsClient({ initialData, initialGlobalRate }: { initialD
       if (statusFilter !== "all") params.set("status_filter", statusFilter);
       if (dateFrom) params.set("date_from", dateFrom);
       if (dateTo) params.set("date_to", dateTo);
-      const res = await clientApi(`/admin/commissions?${params}`, {
-              });
+      const res = await clientApi(`/admin/commissions?${params}`);
       if (res.ok) setData(await res.json());
+      else toast("Could not refresh commissions.", "error");
+    } catch {
+      toast("Network error while refreshing.", "error");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRunAggregation = async () => {
-    if (!confirm("Run daily aggregation to group all new delivered orders into single commission entries per vendor?")) return;
+  const runAggregation = async () => {
+    const ok = await confirm({
+      title: "Run daily aggregation?",
+      message:
+        "Groups every newly delivered order into one commission entry per vendor. Safe to run more than once — orders already aggregated are skipped.",
+      confirmLabel: "Run aggregation",
+    });
+    if (!ok) return;
+
     setLoading(true);
     try {
-      const res = await clientApi(`/admin/commissions/aggregate`, {
-        method: "POST",
-              });
+      const res = await clientApi(`/admin/commissions/aggregate`, { method: "POST" });
       if (res.ok) {
-        const data = await res.json();
-        alert(data.message || "Aggregation completed successfully.");
+        const body = await res.json();
+        toast(body.message || "Aggregation complete.", "success");
         await refresh();
       } else {
-        alert("Failed to run aggregation.");
+        toast("Aggregation failed.", "error");
       }
-    } catch (e) {
-      alert("Error running aggregation.");
+    } catch {
+      toast("Network error during aggregation.", "error");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleBillAll = async (vendor: VendorSummary) => {
-    const pendingEntries = vendor.entries.filter(e => e.status === "pending");
-    if (!pendingEntries.length) return;
-    const total = pendingEntries.reduce((s, e) => s + e.commission_amount, 0);
-    if (!confirm(`Send a commission invoice of ${GHS(total)} to ${vendor.store_name}?`)) return;
+  const billAll = async (vendor: VendorSummary) => {
+    const pending = vendor.entries.filter((e) => e.status === "pending");
+    if (pending.length === 0) return;
+    const total = pending.reduce((sum, e) => sum + e.commission_amount, 0);
+
+    const ok = await confirm({
+      title: "Send commission invoice?",
+      message: `${formatGHS(total)} across ${pending.length} entr${pending.length === 1 ? "y" : "ies"} will be invoiced to ${vendor.store_name}.`,
+      confirmLabel: "Send invoice",
+    });
+    if (!ok) return;
 
     setActionLoading(vendor.vendor_id);
     try {
@@ -120,25 +180,39 @@ export function CommissionsClient({ initialData, initialGlobalRate }: { initialD
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           vendor_id: vendor.vendor_id,
-          entry_ids: pendingEntries.map(e => e.id),
+          entry_ids: pending.map((e) => e.id),
           payment_due_days: 3,
         }),
       });
-      if (res.ok) await refresh();
-      else alert("Failed to bill vendor");
+      if (res.ok) {
+        toast(`Invoiced ${vendor.store_name}.`, "success");
+        await refresh();
+      } else {
+        toast("Could not bill that vendor.", "error");
+      }
+    } catch {
+      toast("Network error while billing.", "error");
     } finally {
       setActionLoading(null);
     }
   };
 
   const openPayModal = (vendor: VendorSummary) => {
-    const billableEntries = vendor.entries.filter(e => e.status === "billed" || e.status === "pending");
-    const total = billableEntries.reduce((s, e) => s + e.commission_amount, 0);
-    setPayModal({ vendorId: vendor.vendor_id, entryIds: billableEntries.map(e => e.id), total });
-    setPayMethod("bank"); setPayRef(""); setPayNote("");
+    const billable = vendor.entries.filter(
+      (e) => e.status === "billed" || e.status === "pending"
+    );
+    setPayModal({
+      vendorId: vendor.vendor_id,
+      storeName: vendor.store_name,
+      entryIds: billable.map((e) => e.id),
+      total: billable.reduce((sum, e) => sum + e.commission_amount, 0),
+    });
+    setPayMethod("bank");
+    setPayRef("");
+    setPayNote("");
   };
 
-  const handleMarkPaid = async () => {
+  const markPaid = async () => {
     if (!payModal) return;
     setActionLoading(payModal.vendorId);
     try {
@@ -148,26 +222,34 @@ export function CommissionsClient({ initialData, initialGlobalRate }: { initialD
         body: JSON.stringify({
           entry_ids: payModal.entryIds,
           payment_method: payMethod,
-          payment_reference: payRef || null,
-          admin_note: payNote || null,
+          payment_reference: payRef.trim() || null,
+          admin_note: payNote.trim() || null,
         }),
       });
-      if (res.ok) { await refresh(); setPayModal(null); }
-      else alert("Failed to mark as paid");
+      if (res.ok) {
+        toast(`Recorded payment from ${payModal.storeName}.`, "success");
+        setPayModal(null);
+        await refresh();
+      } else {
+        toast("Could not record that payment.", "error");
+      }
+    } catch {
+      toast("Network error while recording payment.", "error");
     } finally {
       setActionLoading(null);
     }
   };
 
-  const [rateInputs, setRateInputs] = useState<Record<string, string>>({});
+  const setCustomRate = async (vendorId: string) => {
+    const raw = rateInputs[vendorId];
+    if (!raw) return;
+    const rate = parseFloat(raw);
+    if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+      toast("Enter a rate between 0 and 100.", "warning");
+      return;
+    }
 
-  const handleSetCustomRate = async (vendorId: string) => {
-    const rateStr = rateInputs[vendorId];
-    if (!rateStr) return;
-    const rate = parseFloat(rateStr);
-    if (isNaN(rate) || rate < 0 || rate > 100) return alert("Enter a rate between 0 and 100.");
-
-    setActionLoading(vendorId + "-rate");
+    setActionLoading(`${vendorId}-rate`);
     try {
       const res = await clientApi(`/admin/commissions/vendors/${vendorId}/rate`, {
         method: "POST",
@@ -175,39 +257,63 @@ export function CommissionsClient({ initialData, initialGlobalRate }: { initialD
         body: JSON.stringify({ rate, reason: "Set from the admin commissions page" }),
       });
       if (res.ok) {
+        setRateInputs((current) => {
+          const next = { ...current };
+          delete next[vendorId];
+          return next;
+        });
+        toast(`Custom rate set to ${rate}%.`, "success");
         await refresh();
-        setRateInputs(prev => { const n = { ...prev }; delete n[vendorId]; return n; });
       } else {
         const detail = await res.json().catch(() => null);
-        alert(detail?.detail ?? "Failed to update rate");
+        toast(
+          typeof detail?.detail === "string" ? detail.detail : "Could not set that rate.",
+          "error"
+        );
       }
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleClearCustomRate = async (vendorId: string, storeName: string) => {
-    if (!confirm(`Put ${storeName} back on the standard ${globalRate}% rate?`)) return;
-    setActionLoading(vendorId + "-rate");
+  const clearCustomRate = async (vendorId: string, storeName: string) => {
+    const ok = await confirm({
+      title: "Reset to the platform rate?",
+      message: `${storeName} goes back to the standard ${globalRate}%. Commissions already recorded keep the rate they were charged at.`,
+      confirmLabel: "Reset rate",
+    });
+    if (!ok) return;
+
+    setActionLoading(`${vendorId}-rate`);
     try {
       const res = await clientApi(`/admin/commissions/vendors/${vendorId}/rate`, {
         method: "DELETE",
-              });
-      if (res.ok) await refresh();
-      else alert("Failed to reset rate");
+      });
+      if (res.ok) {
+        toast(`${storeName} is on the platform rate.`, "success");
+        await refresh();
+      } else {
+        toast("Could not reset that rate.", "error");
+      }
     } finally {
       setActionLoading(null);
     }
   };
 
-  // ── Global rate ────────────────────────────────────────────────────────────
-  const [globalRateInput, setGlobalRateInput] = useState(String(initialGlobalRate));
-  const [globalRate, setGlobalRate] = useState(initialGlobalRate);
-  const [globalSaved, setGlobalSaved] = useState(false);
-
-  const handleSaveGlobalRate = async () => {
+  const saveGlobalRate = async () => {
     const rate = parseFloat(globalRateInput);
-    if (isNaN(rate) || rate < 0 || rate > 100) return alert("Enter a rate between 0 and 100.");
+    if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+      toast("Enter a rate between 0 and 100.", "warning");
+      return;
+    }
+
+    const ok = await confirm({
+      title: `Charge ${rate}% on every sale?`,
+      message:
+        "This applies immediately across the vendor app and this page. Vendors with a custom rate are unaffected, and sales already recorded keep the rate they were charged at.",
+      confirmLabel: "Save rate",
+    });
+    if (!ok) return;
 
     setActionLoading("global-rate");
     try {
@@ -218,78 +324,85 @@ export function CommissionsClient({ initialData, initialGlobalRate }: { initialD
       });
       if (res.ok) {
         setGlobalRate(rate);
-        setGlobalSaved(true);
-        setTimeout(() => setGlobalSaved(false), 2500);
-        // Vendors without an override are now on the new rate — repull so the
-        // table stops showing the old one.
+        toast(`Now charging ${rate}% on every sale.`, "success");
+        // Vendors without an override are on the new rate — repull so the list
+        // stops showing the old one.
         await refresh();
       } else {
         const detail = await res.json().catch(() => null);
-        alert(detail?.detail ?? "Failed to update the platform commission");
+        toast(
+          typeof detail?.detail === "string"
+            ? detail.detail
+            : "Could not update the platform commission.",
+          "error"
+        );
       }
     } finally {
       setActionLoading(null);
     }
   };
 
-  const filtered = data.filter(v =>
-    (search === "" || v.store_name.toLowerCase().includes(search.toLowerCase()))
+  const filtered = data.filter(
+    (v) => !search || v.store_name.toLowerCase().includes(search.toLowerCase())
   );
 
-  const totalPending = data.reduce((s, v) => s + v.pending_commission, 0);
-  const totalBilled = data.reduce((s, v) => s + v.billed_commission, 0);
-  const totalPaid = data.reduce((s, v) => s + v.paid_commission, 0);
-  const totalGMV = data.reduce((s, v) => s + v.total_gross, 0);
+  const totals = data.reduce(
+    (acc, v) => ({
+      gmv: acc.gmv + v.total_gross,
+      pending: acc.pending + v.pending_commission,
+      billed: acc.billed + v.billed_commission,
+      paid: acc.paid + v.paid_commission,
+    }),
+    { gmv: 0, pending: 0, billed: 0, paid: 0 }
+  );
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold font-inter tracking-tight text-ink flex items-center">
-            <Banknote className="w-8 h-8 mr-3 text-primary" />
-            Commission Tracker
-          </h1>
-          <p className="text-ink-soft mt-1">Monitor vendor sales and manage daily commission billing.</p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={handleRunAggregation}
-            disabled={loading}
-            className="flex items-center px-4 py-2 bg-ink border border-ink rounded-lg text-surface hover:bg-ink-muted transition-all text-sm font-semibold shadow-sm"
-          >
-            <Banknote className={`w-4 h-4 mr-2 ${loading ? "animate-pulse" : ""}`} />
-            Run Daily Aggregation
-          </button>
-          <button
-            onClick={refresh}
-            disabled={loading}
-            className="flex items-center px-4 py-2 bg-surface border border-surface-muted rounded-lg text-ink-soft hover:text-ink hover:border-primary transition-all text-sm font-semibold"
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
-        </div>
-      </div>
+    <div className="space-y-5 sm:space-y-6">
+      <PageHeader
+        title="Commissions"
+        icon={<Banknote className="h-6 w-6 text-ink-muted sm:h-7 sm:w-7" />}
+        description="Vendor sales, commission rates and billing."
+        action={
+          <>
+            <Button
+              variant="dark"
+              onClick={runAggregation}
+              disabled={loading}
+              icon={<Banknote className="h-4 w-4" />}
+            >
+              <span className="hidden sm:inline">Run aggregation</span>
+              <span className="sm:hidden">Aggregate</span>
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={refresh}
+              disabled={loading}
+              aria-label="Refresh"
+              icon={<RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />}
+            />
+          </>
+        }
+      />
 
-      {/* Global commission rate — the single control that sets what every
-          vendor without an override pays on each sale. */}
-      <div className="bg-surface border border-surface-muted rounded-xl p-6 shadow-sm">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-          <div className="flex items-start">
-            <div className="p-2 rounded-lg bg-primary/10 text-primary mr-4">
-              <Percent className="w-6 h-6" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold font-inter text-ink">Platform commission rate</h2>
-              <p className="text-sm mt-1 text-ink-soft max-w-xl">
-                Charged on every sale made by every vendor. Changing it applies immediately
-                across the vendor app and this page — vendors with a custom rate below are
-                unaffected. Sales already recorded keep the rate they were charged at.
+      {/* ── Platform rate ── */}
+      <section className="rounded-xl border border-surface-muted bg-surface p-4 shadow-[var(--shadow-raised-1)] sm:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-primary-ghost text-ink">
+              <Percent className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="font-inter text-base font-bold text-ink sm:text-lg">
+                Platform commission rate
+              </h2>
+              <p className="mt-1 max-w-xl font-open-sans text-sm text-ink-soft">
+                Charged on every sale by every vendor without a custom rate.
+                Currently <strong className="font-semibold text-ink">{globalRate}%</strong>.
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
+
+          <div className="flex flex-shrink-0 items-center gap-2">
             <div className="relative">
               <input
                 type="number"
@@ -297,317 +410,446 @@ export function CommissionsClient({ initialData, initialGlobalRate }: { initialD
                 max={100}
                 step="0.1"
                 value={globalRateInput}
-                onChange={e => setGlobalRateInput(e.target.value)}
-                className="w-28 pr-7 py-2 px-3 border border-surface-muted rounded-lg text-right text-ink bg-surface font-mono text-lg focus:outline-none focus:border-primary"
+                onChange={(e) => setGlobalRateInput(e.target.value)}
+                aria-label="Platform commission rate"
+                inputMode="decimal"
+                className="h-11 w-28 rounded-lg border border-surface-muted bg-surface px-3 pr-7 text-right font-mono text-base text-ink focus:border-primary focus:outline-none"
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-muted pointer-events-none">%</span>
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-ink-muted">
+                %
+              </span>
             </div>
-            <button
-              onClick={handleSaveGlobalRate}
-              disabled={parseFloat(globalRateInput) === globalRate || actionLoading === "global-rate"}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                parseFloat(globalRateInput) !== globalRate && actionLoading !== "global-rate"
-                  ? "bg-primary text-surface hover:bg-primary-dim"
-                  : "bg-surface-muted text-ink-muted cursor-not-allowed"
-              }`}
+            <Button
+              onClick={saveGlobalRate}
+              disabled={
+                parseFloat(globalRateInput) === globalRate || actionLoading === "global-rate"
+              }
             >
-              {actionLoading === "global-rate" ? "Saving…" : "Save rate"}
-            </button>
+              {actionLoading === "global-rate" ? "Saving…" : "Save"}
+            </Button>
           </div>
         </div>
-        {globalSaved && (
-          <div className="flex items-center text-xs text-success font-bold mt-4">
-            <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Now charging {globalRate}% on every sale.
-          </div>
-        )}
+      </section>
+
+      {/* ── Totals ── */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <StatCard
+          label="Platform GMV"
+          tone="primary"
+          icon={<TrendingUp className="h-5 w-5" />}
+          value={<LocaleNumber value={totals.gmv} currency />}
+        />
+        <StatCard
+          label="Pending"
+          tone="warning"
+          icon={<Clock className="h-5 w-5" />}
+          value={<LocaleNumber value={totals.pending} currency />}
+        />
+        <StatCard
+          label="Billed"
+          tone="info"
+          icon={<AlertCircle className="h-5 w-5" />}
+          value={<LocaleNumber value={totals.billed} currency />}
+        />
+        <StatCard
+          label="Collected"
+          tone="success"
+          icon={<CheckCircle2 className="h-5 w-5" />}
+          value={<LocaleNumber value={totals.paid} currency />}
+        />
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: "Platform GMV", value: GHS(totalGMV), icon: TrendingUp, color: "text-primary" },
-          { label: "Pending Commission", value: GHS(totalPending), icon: Clock, color: "text-amber-500" },
-          { label: "Billed (Awaiting Payment)", value: GHS(totalBilled), icon: AlertCircle, color: "text-blue-500" },
-          { label: "Collected (Paid)", value: GHS(totalPaid), icon: CheckCircle2, color: "text-emerald-500" },
-        ].map(({ label, value, icon: Icon, color }) => (
-          <div key={label} className="bg-surface border border-surface-muted rounded-xl p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-bold uppercase tracking-wider text-ink-muted">{label}</p>
-              <Icon className={`w-5 h-5 ${color}`} />
-            </div>
-            <p className={`text-2xl font-bold font-inter ${color}`}>{mounted ? value : "—"}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Filters */}
-      <div className="bg-surface border border-surface-muted rounded-xl p-4 flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-muted" />
+      {/* ── Filters ── */}
+      <FilterBar className="flex-col sm:flex-wrap">
+        <SearchInput value={search} onChange={setSearch} placeholder="Search vendor…" />
+        <Select
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={STATUS_OPTIONS}
+          label="Entry status"
+        />
+        <div className="flex w-full gap-2 sm:w-auto">
           <input
-            type="text"
-            placeholder="Search vendor..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 border border-surface-muted rounded-lg text-sm text-ink bg-surface focus:outline-none focus:border-primary"
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            aria-label="From date"
+            className="h-11 w-full rounded-lg border border-surface-muted bg-surface-soft px-3 font-open-sans text-sm text-ink focus:border-primary focus:outline-none sm:w-auto"
+          />
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            aria-label="To date"
+            className="h-11 w-full rounded-lg border border-surface-muted bg-surface-soft px-3 font-open-sans text-sm text-ink focus:border-primary focus:outline-none sm:w-auto"
           />
         </div>
-        <select
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)}
-          className="border border-surface-muted rounded-lg px-3 py-2 text-sm text-ink bg-surface focus:outline-none focus:border-primary"
-        >
-          <option value="all">All Statuses</option>
-          <option value="pending">Pending</option>
-          <option value="billed">Billed</option>
-          <option value="paid">Paid</option>
-        </select>
-        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-          className="border border-surface-muted rounded-lg px-3 py-2 text-sm text-ink bg-surface focus:outline-none focus:border-primary" />
-        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-          className="border border-surface-muted rounded-lg px-3 py-2 text-sm text-ink bg-surface focus:outline-none focus:border-primary" />
-        <button onClick={refresh}
-          className="px-4 py-2 bg-primary text-surface rounded-lg text-sm font-bold hover:bg-primary-dim transition-colors flex items-center">
-          <Filter className="w-4 h-4 mr-2" />Apply
-        </button>
-      </div>
+        <Button onClick={refresh} disabled={loading} className="sm:w-auto">
+          Apply
+        </Button>
+      </FilterBar>
 
-      {/* Vendor Commission Table */}
-      <div className="space-y-4">
-        {filtered.length === 0 ? (
-          <div className="bg-surface border border-surface-muted rounded-xl p-12 text-center text-ink-muted">
-            No commission data found. Commission entries are created automatically when orders are delivered.
-          </div>
-        ) : filtered.map(vendor => {
-          const isExpanded = expanded === vendor.vendor_id;
-          const pendingEntries = vendor.entries.filter(e => e.status === "pending");
-          const hasPending = pendingEntries.length > 0;
-          const hasBilled = vendor.entries.some(e => e.status === "billed");
+      {/* ── Vendors ── */}
+      {filtered.length === 0 ? (
+        <EmptyState
+          icon={<Banknote className="h-10 w-10" />}
+          title="No commission data"
+          message="Entries are created automatically when orders are delivered. Run the daily aggregation if deliveries have happened since the last run."
+        />
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((vendor) => {
+            const isExpanded = expanded === vendor.vendor_id;
+            const hasPending = vendor.entries.some((e) => e.status === "pending");
+            const hasBilled = vendor.entries.some((e) => e.status === "billed");
+            const busy = actionLoading === vendor.vendor_id;
 
-          return (
-            <div key={vendor.vendor_id} className="bg-surface border border-surface-muted rounded-xl shadow-sm overflow-hidden">
-              {/* Vendor Row */}
+            return (
               <div
-                className="p-5 flex flex-col sm:flex-row sm:items-center gap-4 cursor-pointer hover:bg-surface-soft/40 transition-colors"
-                onClick={() => setExpanded(isExpanded ? null : vendor.vendor_id)}
+                key={vendor.vendor_id}
+                className="overflow-hidden rounded-xl border border-surface-muted bg-surface shadow-[var(--shadow-raised-1)]"
               >
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-primary-ghost border border-primary/20">
-                    <Store className="w-5 h-5 text-primary" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-bold text-ink truncate">{vendor.store_name}</p>
-                    <p className="text-xs text-ink-muted">
-                      @{vendor.store_slug} · Rate: <span className="font-bold text-ink-soft">{vendor.commission_rate}%</span>
-                      {vendor.rate_is_custom ? " (custom)" : ` (platform default)`}
-                    </p>
-                  </div>
-                  {vendor.is_verified && (
-                    <span className="ml-2 px-2 py-0.5 text-xs font-bold bg-emerald-100 text-emerald-700 rounded-full border border-emerald-200 flex-shrink-0">
-                      Verified
+                <div className="p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-primary-border bg-primary-ghost text-ink">
+                      <Store className="h-5 w-5" />
                     </span>
-                  )}
-                </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-inter text-sm font-semibold text-ink">
+                          {vendor.store_name}
+                        </p>
+                        {vendor.is_verified && <Badge tone="success">Verified</Badge>}
+                        <Badge tone={vendor.rate_is_custom ? "primary" : "neutral"}>
+                          {vendor.commission_rate}%{vendor.rate_is_custom ? " custom" : ""}
+                        </Badge>
+                      </div>
+                      <p className="mt-0.5 truncate font-open-sans text-xs text-ink-muted">
+                        @{vendor.store_slug}
+                      </p>
+                    </div>
 
-                {/* Stats */}
-                <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 text-center flex-shrink-0">
-                  <div>
-                    <p className="text-xs text-ink-muted font-semibold uppercase tracking-wider">GMV</p>
-                    <p className="text-sm font-bold text-ink">{mounted ? GHS(vendor.total_gross) : "—"}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-ink-muted font-semibold uppercase tracking-wider">Pending</p>
-                    <p className="text-sm font-bold text-amber-500">{mounted ? GHS(vendor.pending_commission) : "—"}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-ink-muted font-semibold uppercase tracking-wider">Billed</p>
-                    <p className="text-sm font-bold text-blue-500">{mounted ? GHS(vendor.billed_commission) : "—"}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-ink-muted font-semibold uppercase tracking-wider">Delivered</p>
-                    <p className="text-sm font-bold text-emerald-500 flex items-center justify-center gap-1">
-                      <Package className="w-3.5 h-3.5" />{vendor.delivered_orders}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-ink-muted font-semibold uppercase tracking-wider">Cancelled</p>
-                    <p className="text-sm font-bold text-red-400 flex items-center justify-center gap-1">
-                      <XCircle className="w-3.5 h-3.5" />{vendor.cancelled_orders}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Action buttons */}
-                <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                  {hasPending && (
                     <button
-                      onClick={() => handleBillAll(vendor)}
-                      disabled={actionLoading === vendor.vendor_id}
-                      className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-bold hover:bg-amber-600 transition-colors disabled:opacity-50"
+                      type="button"
+                      onClick={() => setExpanded(isExpanded ? null : vendor.vendor_id)}
+                      aria-expanded={isExpanded}
+                      aria-label={
+                        isExpanded
+                          ? `Hide ledger for ${vendor.store_name}`
+                          : `Show ledger for ${vendor.store_name}`
+                      }
+                      className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
                     >
-                      Bill Now
+                      {isExpanded ? (
+                        <ChevronUp className="h-5 w-5" />
+                      ) : (
+                        <ChevronDown className="h-5 w-5" />
+                      )}
                     </button>
-                  )}
-                  {(hasBilled || hasPending) && (
-                    <button
-                      onClick={() => openPayModal(vendor)}
-                      disabled={actionLoading === vendor.vendor_id}
-                      className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors disabled:opacity-50"
-                    >
-                      Mark Paid
-                    </button>
-                  )}
-                  {isExpanded ? <ChevronUp className="w-5 h-5 text-ink-muted" /> : <ChevronDown className="w-5 h-5 text-ink-muted" />}
-                </div>
-              </div>
+                  </div>
 
-              {/* Expanded: Entry Detail Table */}
-              {isExpanded && (
-                <div className="border-t border-surface-muted">
-                  <div className="p-4 bg-surface-soft/30">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
-                      <h3 className="text-sm font-bold text-ink flex items-center">
-                        <ReceiptText className="w-4 h-4 mr-2 text-ink-muted" />
-                        Commission Ledger ({vendor.entries.length} entries)
+                  {/* A five-column stat strip crammed into a flex row is
+                      unreadable on a phone; it wraps to a grid instead. */}
+                  <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                    {[
+                      { label: "GMV", value: vendor.total_gross, currency: true },
+                      { label: "Pending", value: vendor.pending_commission, currency: true },
+                      { label: "Billed", value: vendor.billed_commission, currency: true },
+                      {
+                        label: "Delivered",
+                        value: vendor.delivered_orders,
+                        icon: <Package className="h-3.5 w-3.5" />,
+                      },
+                      {
+                        label: "Cancelled",
+                        value: vendor.cancelled_orders,
+                        icon: <XCircle className="h-3.5 w-3.5" />,
+                      },
+                    ].map((stat) => (
+                      <div key={stat.label} className="min-w-0">
+                        <dt className="font-inter text-[10px] font-bold uppercase tracking-wider text-ink-muted">
+                          {stat.label}
+                        </dt>
+                        <dd className="mt-0.5 flex items-center gap-1 truncate font-inter text-sm font-bold text-ink">
+                          {stat.icon}
+                          <LocaleNumber value={stat.value} currency={stat.currency} />
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+
+                  {(hasPending || hasBilled) && (
+                    <div className="mt-4 flex flex-wrap gap-2 border-t border-surface-muted pt-3">
+                      {hasPending && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => billAll(vendor)}
+                          disabled={busy}
+                          className="border-warning text-warning"
+                        >
+                          Bill now
+                        </Button>
+                      )}
+                      <Button size="sm" onClick={() => openPayModal(vendor)} disabled={busy}>
+                        Mark paid
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {isExpanded && (
+                  <div className="border-t border-surface-muted bg-surface-soft/40 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <h3 className="flex items-center gap-2 font-inter text-sm font-bold text-ink">
+                        <ReceiptText className="h-4 w-4 text-ink-muted" />
+                        Ledger ({vendor.entries.length})
                       </h3>
-                      <div className="flex items-center gap-2 bg-surface p-2 rounded-lg border border-surface-muted shadow-sm">
-                        <span className="text-xs font-bold text-ink-muted uppercase">Custom Rate:</span>
+
+                      <div className="flex items-center gap-2 rounded-lg border border-surface-muted bg-surface p-2">
+                        <span className="font-inter text-[10px] font-bold uppercase tracking-wider text-ink-muted">
+                          Rate
+                        </span>
                         <input
                           type="number"
-                          min="0" max="100" step="0.1"
-                          placeholder={vendor.commission_rate.toString()}
+                          min="0"
+                          max="100"
+                          step="0.1"
+                          inputMode="decimal"
+                          placeholder={String(vendor.commission_rate)}
                           value={rateInputs[vendor.vendor_id] ?? ""}
-                          onChange={e => setRateInputs({...rateInputs, [vendor.vendor_id]: e.target.value})}
-                          className="w-16 px-2 py-1 text-xs border border-surface-muted rounded text-right bg-surface text-ink focus:border-primary focus:outline-none"
+                          onChange={(e) =>
+                            setRateInputs({
+                              ...rateInputs,
+                              [vendor.vendor_id]: e.target.value,
+                            })
+                          }
+                          aria-label={`Custom rate for ${vendor.store_name}`}
+                          className="h-9 w-16 rounded border border-surface-muted bg-surface px-2 text-right font-mono text-xs text-ink focus:border-primary focus:outline-none"
                         />
-                        <span className="text-xs text-ink-muted font-bold">%</span>
-                        <button
-                          onClick={() => handleSetCustomRate(vendor.vendor_id)}
-                          disabled={!rateInputs[vendor.vendor_id] || actionLoading === vendor.vendor_id + "-rate"}
-                          className="px-3 py-1 bg-ink text-surface text-xs font-bold rounded hover:bg-ink-soft transition-colors disabled:opacity-50"
+                        <span className="font-inter text-xs font-bold text-ink-muted">%</span>
+                        <Button
+                          size="sm"
+                          variant="dark"
+                          onClick={() => setCustomRate(vendor.vendor_id)}
+                          disabled={
+                            !rateInputs[vendor.vendor_id] ||
+                            actionLoading === `${vendor.vendor_id}-rate`
+                          }
+                          className="!min-h-9 px-3"
                         >
-                          {actionLoading === vendor.vendor_id + "-rate" ? "..." : "Save"}
-                        </button>
+                          Save
+                        </Button>
                         {vendor.rate_is_custom && (
-                          <button
-                            onClick={() => handleClearCustomRate(vendor.vendor_id, vendor.store_name)}
-                            disabled={actionLoading === vendor.vendor_id + "-rate"}
-                            title={`Reset to the platform rate (${globalRate}%)`}
-                            className="flex items-center gap-1 px-2 py-1 border border-surface-muted text-ink-soft text-xs font-bold rounded hover:border-primary hover:text-ink transition-colors disabled:opacity-50"
-                          >
-                            <RotateCcw className="w-3 h-3" /> Reset
-                          </button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() =>
+                              clearCustomRate(vendor.vendor_id, vendor.store_name)
+                            }
+                            disabled={actionLoading === `${vendor.vendor_id}-rate`}
+                            aria-label="Reset to platform rate"
+                            className="!min-h-9 px-2"
+                            icon={<RotateCcw className="h-3 w-3" />}
+                          />
                         )}
                       </div>
                     </div>
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full text-sm">
-                        <thead>
-                          <tr className="text-xs font-bold text-ink-muted uppercase tracking-wider">
-                            <th className="text-left py-2 px-3">Date</th>
-                            <th className="text-left py-2 px-3">Order</th>
-                            <th className="text-left py-2 px-3">Type</th>
-                            <th className="text-right py-2 px-3">Gross</th>
-                            <th className="text-right py-2 px-3">Rate</th>
-                            <th className="text-right py-2 px-3">Commission</th>
-                            <th className="text-left py-2 px-3">Status</th>
-                            <th className="text-left py-2 px-3">Ref / Note</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-surface-muted">
-                          {vendor.entries.map(entry => (
-                            <tr key={entry.id} className="hover:bg-surface-soft/50 transition-colors">
-                              <td className="py-2.5 px-3 text-ink-soft font-mono text-xs">
-                                {mounted ? new Date(entry.period_date).toLocaleDateString() : "—"}
-                              </td>
-                              <td className="py-2.5 px-3 font-mono text-xs text-ink-muted">
-                                {entry.order_id ? entry.order_id.slice(0, 8) + "…" : "—"}
-                              </td>
-                              <td className="py-2.5 px-3">
-                                <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${entry.entry_type === "credit" ? "bg-purple-100 text-purple-700 border-purple-200" : "bg-surface-muted text-ink-soft border-surface-muted"}`}>
-                                  {entry.entry_type === "credit" ? "↩ Refund Credit" : "Charge"}
-                                </span>
-                              </td>
-                              <td className={`py-2.5 px-3 text-right font-mono font-bold ${entry.entry_type === "credit" ? "text-purple-600" : "text-ink"}`}>
-                                {mounted ? (entry.entry_type === "credit" ? "−" : "") + GHS(entry.gross_amount) : "—"}
-                              </td>
-                              <td className="py-2.5 px-3 text-right text-ink-soft">{entry.commission_rate}%</td>
-                              <td className={`py-2.5 px-3 text-right font-bold font-mono ${entry.entry_type === "credit" ? "text-purple-600" : "text-primary"}`}>
-                                {mounted ? (entry.entry_type === "credit" ? "−" : "") + GHS(entry.commission_amount) : "—"}
-                              </td>
-                              <td className="py-2.5 px-3">
-                                <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${STATUS_COLORS[entry.status]}`}>
-                                  {entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}
-                                </span>
-                              </td>
-                              <td className="py-2.5 px-3 text-xs text-ink-muted max-w-xs truncate">
-                                {entry.payment_reference || entry.admin_note || "—"}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                        <tfoot className="border-t-2 border-surface-muted bg-surface-soft">
-                          <tr>
-                            <td colSpan={3} className="py-2.5 px-3 text-xs font-bold text-ink">TOTALS</td>
-                            <td className="py-2.5 px-3 text-right font-bold font-mono text-ink">{mounted ? GHS(vendor.total_gross) : "—"}</td>
-                            <td></td>
-                            <td className="py-2.5 px-3 text-right font-bold font-mono text-primary">{mounted ? GHS(vendor.total_commission) : "—"}</td>
-                            <td colSpan={2}></td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
 
-      {/* Mark Paid Modal */}
-      {payModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 backdrop-blur-sm p-4">
-          <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md p-6 border border-surface-muted">
-            <h2 className="text-xl font-bold font-inter text-ink mb-1">Record Payment</h2>
-            <p className="text-ink-muted text-sm mb-5">
-              Marking <span className="font-bold text-emerald-600">{mounted ? GHS(payModal.total) : "—"}</span> as paid for {payModal.entryIds.length} commission entries.
-            </p>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-bold text-ink mb-1">Payment Method</label>
-                <select value={payMethod} onChange={e => setPayMethod(e.target.value)}
-                  className="w-full border border-surface-muted rounded-lg px-3 py-2 text-sm text-ink bg-surface focus:outline-none focus:border-primary">
-                  <option value="bank">Bank Transfer</option>
-                  <option value="mobile_money">Mobile Money</option>
-                </select>
+                    {vendor.entries.length === 0 ? (
+                      <p className="py-6 text-center font-open-sans text-sm text-ink-muted">
+                        No ledger entries in this period.
+                      </p>
+                    ) : (
+                      <>
+                        {/* Desktop ledger */}
+                        <div className="mt-3 hidden overflow-x-auto rounded-lg border border-surface-muted bg-surface md:block">
+                          <table className="min-w-full text-sm">
+                            <thead className="bg-surface-soft">
+                              <tr className="font-inter text-[10px] font-bold uppercase tracking-wider text-ink-muted">
+                                <th className="px-3 py-2 text-left">Date</th>
+                                <th className="px-3 py-2 text-left">Order</th>
+                                <th className="px-3 py-2 text-left">Type</th>
+                                <th className="px-3 py-2 text-right">Gross</th>
+                                <th className="px-3 py-2 text-right">Rate</th>
+                                <th className="px-3 py-2 text-right">Commission</th>
+                                <th className="px-3 py-2 text-left">Status</th>
+                                <th className="px-3 py-2 text-left">Ref</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-surface-muted">
+                              {vendor.entries.map((entry) => (
+                                <tr key={entry.id} className="hover:bg-surface-soft/50">
+                                  <td className="whitespace-nowrap px-3 py-2.5 font-open-sans text-xs text-ink-soft">
+                                    {formatDate(entry.period_date)}
+                                  </td>
+                                  <td className="px-3 py-2.5 font-mono text-xs text-ink-muted">
+                                    {entry.order_id ? shortId(entry.order_id) : "—"}
+                                  </td>
+                                  <td className="px-3 py-2.5">
+                                    <Badge
+                                      tone={
+                                        entry.entry_type === "credit" ? "primary" : "neutral"
+                                      }
+                                    >
+                                      {entry.entry_type === "credit" ? "Refund" : "Charge"}
+                                    </Badge>
+                                  </td>
+                                  <td className="whitespace-nowrap px-3 py-2.5 text-right font-inter font-bold text-ink">
+                                    {entry.entry_type === "credit" ? "−" : ""}
+                                    <LocaleNumber value={entry.gross_amount} currency />
+                                  </td>
+                                  <td className="px-3 py-2.5 text-right font-open-sans text-ink-soft">
+                                    {entry.commission_rate}%
+                                  </td>
+                                  <td className="whitespace-nowrap px-3 py-2.5 text-right font-inter font-bold text-ink">
+                                    {entry.entry_type === "credit" ? "−" : ""}
+                                    <LocaleNumber value={entry.commission_amount} currency />
+                                  </td>
+                                  <td className="px-3 py-2.5">
+                                    <Badge tone={ENTRY_TONE[entry.status] ?? "neutral"}>
+                                      {entry.status}
+                                    </Badge>
+                                  </td>
+                                  <td className="max-w-[160px] truncate px-3 py-2.5 font-open-sans text-xs text-ink-muted">
+                                    {entry.payment_reference || entry.admin_note || "—"}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot className="border-t-2 border-surface-muted bg-surface-soft">
+                              <tr className="font-inter text-sm font-bold text-ink">
+                                <td colSpan={3} className="px-3 py-2.5 text-[10px] uppercase">
+                                  Totals
+                                </td>
+                                <td className="px-3 py-2.5 text-right">
+                                  <LocaleNumber value={vendor.total_gross} currency />
+                                </td>
+                                <td />
+                                <td className="px-3 py-2.5 text-right">
+                                  <LocaleNumber value={vendor.total_commission} currency />
+                                </td>
+                                <td colSpan={2} />
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+
+                        {/* Mobile ledger */}
+                        <ul className="mt-3 space-y-2 md:hidden">
+                          {vendor.entries.map((entry) => (
+                            <li
+                              key={entry.id}
+                              className="rounded-lg border border-surface-muted bg-surface p-3"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="font-inter text-sm font-bold text-ink">
+                                    {entry.entry_type === "credit" ? "−" : ""}
+                                    <LocaleNumber value={entry.commission_amount} currency />
+                                  </p>
+                                  <p className="font-open-sans text-xs text-ink-muted">
+                                    {formatDate(entry.period_date)} · {entry.commission_rate}%
+                                    of{" "}
+                                    <LocaleNumber value={entry.gross_amount} currency />
+                                  </p>
+                                </div>
+                                <div className="flex flex-shrink-0 flex-col items-end gap-1">
+                                  <Badge tone={ENTRY_TONE[entry.status] ?? "neutral"}>
+                                    {entry.status}
+                                  </Badge>
+                                  {entry.entry_type === "credit" && (
+                                    <Badge tone="primary">Refund</Badge>
+                                  )}
+                                </div>
+                              </div>
+                              {(entry.payment_reference || entry.admin_note) && (
+                                <p className="mt-2 truncate border-t border-surface-muted pt-2 font-open-sans text-xs text-ink-muted">
+                                  {entry.payment_reference || entry.admin_note}
+                                </p>
+                              )}
+                            </li>
+                          ))}
+                          <li className="rounded-lg border border-surface-deep bg-surface-soft p-3">
+                            <div className="flex justify-between font-inter text-sm font-bold text-ink">
+                              <span>Total commission</span>
+                              <LocaleNumber value={vendor.total_commission} currency />
+                            </div>
+                          </li>
+                        </ul>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
-              <div>
-                <label className="block text-sm font-bold text-ink mb-1">Payment Reference (optional)</label>
-                <input type="text" value={payRef} onChange={e => setPayRef(e.target.value)}
-                  placeholder="e.g. GH-TXN-12345"
-                  className="w-full border border-surface-muted rounded-lg px-3 py-2 text-sm text-ink bg-surface focus:outline-none focus:border-primary" />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-ink mb-1">Admin Note (optional)</label>
-                <input type="text" value={payNote} onChange={e => setPayNote(e.target.value)}
-                  placeholder="Any notes..."
-                  className="w-full border border-surface-muted rounded-lg px-3 py-2 text-sm text-ink bg-surface focus:outline-none focus:border-primary" />
-              </div>
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button onClick={() => setPayModal(null)}
-                className="flex-1 px-4 py-2.5 border border-surface-muted rounded-lg text-ink-soft hover:text-ink hover:border-primary transition-colors font-semibold text-sm">
-                Cancel
-              </button>
-              <button onClick={handleMarkPaid} disabled={actionLoading !== null}
-                className="flex-1 px-4 py-2.5 bg-emerald-600 text-white rounded-lg font-bold text-sm hover:bg-emerald-700 transition-colors disabled:opacity-50">
-                {actionLoading ? "Saving…" : "Confirm Payment"}
-              </button>
-            </div>
-          </div>
+            );
+          })}
         </div>
       )}
+
+      {/* ── Record payment ── */}
+      <Sheet
+        open={payModal !== null}
+        onClose={() => setPayModal(null)}
+        title="Record payment"
+        description={
+          payModal
+            ? `${formatGHS(payModal.total)} across ${payModal.entryIds.length} entr${payModal.entryIds.length === 1 ? "y" : "ies"} from ${payModal.storeName}`
+            : undefined
+        }
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setPayModal(null)}
+              className="sm:w-auto"
+              block
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={markPaid}
+              disabled={actionLoading !== null}
+              className="sm:w-auto"
+              block
+            >
+              {actionLoading ? "Saving…" : "Confirm payment"}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field label="Payment method">
+            <Select
+              value={payMethod}
+              onChange={setPayMethod}
+              label="Payment method"
+              className="w-full sm:w-full"
+              options={[
+                { value: "bank", label: "Bank transfer" },
+                { value: "mobile_money", label: "Mobile money" },
+              ]}
+            />
+          </Field>
+
+          <Field label="Payment reference" hint="Optional — the transaction ID.">
+            <TextInput
+              value={payRef}
+              onChange={(e) => setPayRef(e.target.value)}
+              placeholder="e.g. GH-TXN-12345"
+            />
+          </Field>
+
+          <Field label="Admin note" hint="Optional — visible on the ledger entry.">
+            <TextInput
+              value={payNote}
+              onChange={(e) => setPayNote(e.target.value)}
+              placeholder="Anything worth recording…"
+            />
+          </Field>
+        </div>
+      </Sheet>
     </div>
   );
 }

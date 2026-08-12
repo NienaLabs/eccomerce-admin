@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getMessaging, getToken, onMessage } from 'firebase/messaging';
 import { clientApi } from '@/lib/api';
+import { useIsHydrated } from '@/hooks/useIsHydrated';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -17,43 +18,31 @@ const firebaseConfig = {
 // Initialize Firebase App
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-import { useState } from 'react';
-
 export function usePushNotificationsSetup() {
   const isRegisteredRef = useRef(false);
-  const [permissionStatus, setPermissionStatus] = useState<string>('default');
+  const hydrated = useIsHydrated();
+  // Only set from `requestPermission`, which runs off a click — never from an
+  // effect. The browser's current value is read at render instead.
+  const [granted, setGranted] = useState<NotificationPermission | null>(null);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      setPermissionStatus(Notification.permission);
-    }
-  }, []);
+  const permissionStatus: string =
+    granted ??
+    (hydrated && typeof window !== 'undefined' && 'Notification' in window
+      ? Notification.permission
+      : 'default');
 
-  const requestPermission = async () => {
-    if (typeof window === 'undefined') return false;
-    try {
-      const permission = await Notification.requestPermission();
-      setPermissionStatus(permission);
-      if (permission === 'granted') {
-        await setupFCM();
-        return true;
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    return false;
-  };
-
-  const setupFCM = async () => {
+  const setupFCM = useCallback(async () => {
     if (isRegisteredRef.current || typeof window === 'undefined') return;
     try {
       if (!('serviceWorker' in navigator)) return;
       if (Notification.permission !== 'granted') return;
 
-      const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-      await navigator.serviceWorker.ready;
+      // InstallPrompt registers /sw.js on load — it handles both the offline
+      // shell and FCM background messages — so wait for that one rather than
+      // registering a second worker here.
+      const registration = await navigator.serviceWorker.ready;
       const messaging = getMessaging(app);
-      
+
       const currentToken = await getToken(messaging, {
         vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
         serviceWorkerRegistration: registration,
@@ -62,25 +51,42 @@ export function usePushNotificationsSetup() {
       if (currentToken) {
         const res = await clientApi('/users/me/fcm-token', {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: currentToken }),
         });
         if (res.ok) isRegisteredRef.current = true;
       }
 
       onMessage(messaging, (payload) => {
-        console.log('[Foreground Push Notification Received]', payload);
+        console.log('[Foreground push notification received]', payload);
       });
     } catch (error) {
-      console.error('Error setting up FCM Web Push:', error);
+      console.error('Error setting up FCM web push:', error);
     }
-  };
+  }, []);
+
+  const requestPermission = useCallback(async () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return false;
+    try {
+      const permission = await Notification.requestPermission();
+      setGranted(permission);
+      if (permission === 'granted') {
+        await setupFCM();
+        return true;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return false;
+  }, [setupFCM]);
 
   useEffect(() => {
+    // Registering the FCM token is a side effect on an external system, not a
+    // state update, so it belongs here.
     if (permissionStatus === 'granted') {
       setupFCM();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [permissionStatus]);
+  }, [permissionStatus, setupFCM]);
 
   return { permissionStatus, requestPermission };
 }

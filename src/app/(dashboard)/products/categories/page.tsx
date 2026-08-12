@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { fetchList } from "@/lib/api";
 import { CategoriesClient } from "./CategoriesClient";
 
+export const metadata = { title: "Categories | AdminHub" };
+
 export interface Category {
   id: string;
   name: string;
@@ -12,23 +14,12 @@ export interface Category {
   created_at: string;
 }
 
-async function getCategories() {
-  return fetchList<Category>("/categories/");
-}
-
 export default async function CategoriesPage() {
   const cookieStore = await cookies();
   const token = cookieStore.get("admin_token")?.value;
+  if (!token) redirect("/login");
 
-  if (!token) {
-    redirect("/login");
-  }
+  const categories = await fetchList<Category>("/categories/");
 
-  const categories = await getCategories();
-
-  return (
-    <div className="max-w-7xl mx-auto">
-      <CategoriesClient initialCategories={categories} />
-    </div>
-  );
+  return <CategoriesClient initialCategories={categories} />;
 }
