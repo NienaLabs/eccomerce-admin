@@ -18,6 +18,12 @@ export type Vendor = {
   created_at?: string;
   cancellation_count?: number;
   flagged_for_cancellations?: boolean;
+  /**
+   * Whether this vendor may use the AI assistant. Half the gate — the
+   * platform-wide `ai_assistant_enabled` setting is the other half, and both
+   * must be on before the vendor can reach it.
+   */
+  ai_assistant_enabled?: boolean;
 };
 
 export type KYCDocument = {
